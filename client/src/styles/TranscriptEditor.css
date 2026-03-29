@@ -1,0 +1,133 @@
+.transcript-editor {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.empty-transcript {
+  padding: 32px 16px;
+  text-align: center;
+  color: #999;
+  font-size: 14px;
+  background-color: #f9f9f9;
+  border-radius: 4px;
+  border: 1px dashed #ddd;
+}
+
+.segments-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.segment-item {
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  background-color: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  align-items: flex-start;
+}
+
+.segment-speaker {
+  font-weight: 600;
+  color: #4a90e2;
+  min-width: 80px;
+  padding-top: 2px;
+  font-size: 13px;
+}
+
+.segment-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.segment-text {
+  color: #333;
+  line-height: 1.6;
+  padding: 8px 0;
+  cursor: pointer;
+  word-wrap: break-word;
+  white-space: pre-wrap;
+  transition: background-color 0.2s;
+  border-radius: 4px;
+  padding: 8px;
+}
+
+.segment-text:hover {
+  background-color: #f5f5f5;
+}
+
+.segment-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.segment-edit textarea {
+  padding: 8px;
+  border: 1px solid #4a90e2;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+  min-height: 80px;
+  resize: vertical;
+}
+
+.segment-edit textarea:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.2);
+}
+
+.edit-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-save {
+  padding: 6px 12px;
+  background-color: #4caf50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.btn-save:hover {
+  background-color: #45a049;
+}
+
+.btn-cancel {
+  padding: 6px 12px;
+  background-color: #999;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.btn-cancel:hover {
+  background-color: #777;
+}
+
+.btn-delete {
+  padding: 4px 8px;
+  background: none;
+  border: none;
+  font-size: 14px;
+  cursor: pointer;
+  transition: opacity 0.2s;
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+
+.btn-delete:hover {
+  opacity: 0.7;
+}
