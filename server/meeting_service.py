@@ -176,7 +176,6 @@ def update_transcript(meeting_id: str, transcript: List[Dict[str, Any]]) -> Opti
         db_meeting = db.query(DBMeeting).filter(DBMeeting.id == meeting_id).first()
         if not db_meeting:
             return None
-        
         # Delete existing transcripts for this meeting
         db.query(DBTranscript).filter(DBTranscript.meeting_id == meeting_id).delete()
         
@@ -184,8 +183,8 @@ def update_transcript(meeting_id: str, transcript: List[Dict[str, Any]]) -> Opti
         for seg in transcript:
             db_transcript = DBTranscript(
                 meeting_id=meeting_id,
-                speaker=seg.get('speaker', ''),
-                text=seg.get('text', ''),
+                speaker=db_meeting.participants[seg.get('speaker')],
+                text=seg.get('text'),
                 start_time=seg.get('start', 0.0),
                 end_time=seg.get('end', 0.0)
             )

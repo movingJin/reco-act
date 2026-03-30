@@ -121,7 +121,7 @@ PRESETS: Dict[str, Dict[str, Any]] = {
 }
 
 
-def convert() -> str:
+def convert() -> list:
     audio_path = os.getenv("AUDIO_PATH", "Stt-테스트.wav")
     preset_name = os.getenv("PRESET", "sommers_basic")
 
@@ -135,8 +135,7 @@ def convert() -> str:
     submit = client.transcribe_file(audio_path, config)
     transcribe_id = submit.get("id")
     response = client.wait_for_result(transcribe_id, poll_interval_sec=5)
-    json.dumps(response, ensure_ascii=False, indent=2)
-    return response["results"]["utterances"][0]["msg"]
+    return response["results"]["utterances"]
 
 
 if __name__ == "__main__":

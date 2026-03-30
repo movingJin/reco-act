@@ -49,35 +49,16 @@ UPLOADS_DIR = Path(__file__).parent / "records"
 UPLOADS_DIR.mkdir(exist_ok=True)
 
 
-def parse_stt_output(raw_text: str) -> list:
-    """
-    Simple parser to convert raw STT output to speaker segments.
-    If the output doesn't have speaker info, we'll distribute it across configured participants.
-    
-    Expected format: "화자1: 텍스트1\n화자2: 텍스트2" or just plain text
-    """
+def parse_stt_output(utterances: list) -> list:
     segments = []
-    
-    # Try to parse speaker format
-    lines = raw_text.strip().split('\n')
-    
-    for i, line in enumerate(lines):
-        if ':' in line:
-            parts = line.split(':', 1)
-            speaker = parts[0].strip()
-            text = parts[1].strip()
-        else:
-            # If no speaker info, use rotating assignment
-            speaker = f"화자{(i % 2) + 1}"
-            text = line.strip()
-        
-        if text:  # Only add non-empty segments
-            segments.append(TranscriptSegment(
-                speaker=speaker,
-                text=text,
-                start=float(i * 5),  # Simple time estimation
-                end=float((i + 1) * 5)
-            ))
+
+    for i, utterance in enumerate(utterances):
+        segments.append(TranscriptSegment(
+            speaker=utterance['spk'],
+            text=utterance['msg'],
+            start=utterance['start_at'],
+            end=utterance['start_at'] + utterance['duration']
+        ))
     
     return segments
 
