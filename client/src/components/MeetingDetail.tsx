@@ -6,7 +6,8 @@ import MeetingSettings from './MeetingSettings';
 import '../styles/MeetingDetail.css';
 
 interface TranscriptSegment {
-  speaker: string;
+  speaker_index: number;
+  speaker_name: string;
   text: string;
   start: number;
   end: number;
@@ -45,10 +46,10 @@ function MeetingDetail({ meeting, onUpdate }: MeetingDetailProps) {
 
   const handleSaveTranscript = async (updatedTranscript: TranscriptSegment[]) => {
     try {
+      // Send full TranscriptSegmentResponse format (server will extract speaker_index)
       await axios.post(`/api/meetings/${meeting.id}/transcript`, {
         transcript: updatedTranscript,
       });
-      // 저장 완료
     } catch (error) {
       console.error('Failed to save transcript:', error);
       alert('회의록 저장에 실패했습니다');

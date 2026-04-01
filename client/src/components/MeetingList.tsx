@@ -2,7 +2,8 @@ import { useState } from 'react';
 import '../styles/MeetingList.css';
 
 interface TranscriptSegment {
-  speaker: string;
+  speaker_index: number;
+  speaker_name: string;
   text: string;
   start: number;
   end: number;

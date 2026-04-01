@@ -6,6 +6,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 import requests
+import urllib3
+
+# 경고 억제 (개발 환경에서만 사용)
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
 print(f"secret:{os.getenv('RTZR_CLIENT_SECRET')}, id:{os.getenv('RTZR_CLIENT_ID')}")
 
 class RTZROpenAPIClient:
@@ -31,6 +36,7 @@ class RTZROpenAPIClient:
                 "environment variables, or pass client_id/client_secret to RTZROpenAPIClient."
             )
         self._sess = requests.Session()
+        self._sess.verify = False
         self._token: Optional[Dict[str, Any]] = None
 
     @property

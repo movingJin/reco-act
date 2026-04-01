@@ -4,7 +4,17 @@ from datetime import datetime
 
 
 class TranscriptSegment(BaseModel):
-    speaker: str
+    """Internal model for transcript segment (uses speaker index)."""
+    speaker_index: int
+    text: str
+    start: float = 0.0
+    end: float = 0.0
+
+
+class TranscriptSegmentResponse(BaseModel):
+    """API response model for transcript segment (uses speaker name)."""
+    speaker_index: int
+    speaker_name: str
     text: str
     start: float = 0.0
     end: float = 0.0
@@ -15,7 +25,7 @@ class MeetingSettingsRequest(BaseModel):
 
 
 class TranscriptRequest(BaseModel):
-    transcript: List[TranscriptSegment]
+    transcript: List[TranscriptSegmentResponse]
 
 
 class Meeting(BaseModel):
@@ -23,7 +33,7 @@ class Meeting(BaseModel):
     title: str
     created_at: str
     participants: List[str]
-    transcript: List[TranscriptSegment] = []
+    transcript: List[TranscriptSegmentResponse] = []
     audio_files: List[str] = []
 
 
@@ -33,6 +43,5 @@ class MeetingListResponse(BaseModel):
 
 class UploadAudioResponse(BaseModel):
     status: str
-    raw_transcript: str
-    segments: List[TranscriptSegment]
+    segments: List[TranscriptSegmentResponse]
     meeting_id: str

@@ -11,6 +11,7 @@ from models import (
     TranscriptRequest,
     UploadAudioResponse,
     TranscriptSegment,
+    TranscriptSegmentResponse,
 )
 from meeting_service import (
     list_all_meetings,
@@ -49,12 +50,18 @@ UPLOADS_DIR = Path(__file__).parent / "records"
 UPLOADS_DIR.mkdir(exist_ok=True)
 
 
-def parse_stt_output(utterances: list) -> list:
+def parse_stt_output(utterances: list, participants: list = None) -> list:
     segments = []
+    if participants is None:
+        participants = []
 
     for i, utterance in enumerate(utterances):
+        speaker_index = utterance['spk']
+        # Get speaker name from participants list
+        speaker_name = participants[speaker_index]
+        
         segments.append(TranscriptSegment(
-            speaker=utterance['spk'],
+            speaker_index=speaker_index,
             text=utterance['msg'],
             start=utterance['start_at'],
             end=utterance['start_at'] + utterance['duration']
@@ -131,9 +138,22 @@ async def upload_audio(meeting_id: str, file: UploadFile = File(...)):
             raw_transcript = f"[STT 변환 오류] {str(e)}"
         
         # Parse transcript into segments
-        segments = parse_stt_output(raw_transcript)
+        segments = parse_stt_output(raw_transcript, meeting.participants)
         
-        # Save the transcript segments to the meeting
+        # Convert TranscriptSegment to TranscriptSegmentResponse for API response
+        response_segments = []
+        for seg in segments:
+            speaker_index = seg.speaker_index
+            speaker_name = meeting.participants[speaker_index]
+            response_segments.append(TranscriptSegmentResponse(
+                speaker_index=speaker_index,
+                speaker_name=speaker_name,
+                text=seg.text,
+                start=seg.start,
+                end=seg.end
+            ))
+        
+        # Save the transcript segments to the meeting (using internal format)
         transcript_data = [seg.model_dump() for seg in segments]
         update_transcript(meeting_id, transcript_data)
         
@@ -142,8 +162,7 @@ async def upload_audio(meeting_id: str, file: UploadFile = File(...)):
         
         return UploadAudioResponse(
             status="ok",
-            raw_transcript=raw_transcript,
-            segments=segments,
+            segments=response_segments,
             meeting_id=meeting_id
         )
     
@@ -155,8 +174,16 @@ async def upload_audio(meeting_id: str, file: UploadFile = File(...)):
 @app.post("/api/meetings/{meeting_id}/transcript", response_model=Meeting)
 async def update_meeting_transcript(meeting_id: str, request: TranscriptRequest):
     """Update and save the transcript of a meeting."""
-    # Convert to dict for service layer
-    transcript_data = [seg.model_dump() for seg in request.transcript]
+    # Convert TranscriptSegmentResponse to internal format (speaker_index only)
+    transcript_data = [
+        {
+            'speaker_index': seg.speaker_index,
+            'text': seg.text,
+            'start': seg.start,
+            'end': seg.end
+        }
+        for seg in request.transcript
+    ]
     meeting = update_transcript(meeting_id, transcript_data)
     
     if not meeting:

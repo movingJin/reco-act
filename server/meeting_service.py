@@ -1,16 +1,13 @@
-import json
-import os
+from datetime import datetime
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any, Optional
-from models import Meeting, TranscriptSegment
 from database import SessionLocal, Meeting as DBMeeting, Transcript as DBTranscript
+from models import Meeting, TranscriptSegmentResponse
 
-DATA_DIR = Path(__file__).parent / "data"
 UPLOADS_DIR = Path(__file__).parent / "records"
 
 # Ensure directories exist
-DATA_DIR.mkdir(exist_ok=True)
 UPLOADS_DIR.mkdir(exist_ok=True)
 
 
@@ -21,15 +18,23 @@ def get_db():
 
 def db_meeting_to_model(db_meeting: DBMeeting, db_transcripts: List[DBTranscript]) -> Meeting:
     """Convert database models to Pydantic Meeting model."""
-    transcript_segments = [
-        TranscriptSegment(
-            speaker=t.speaker,
-            text=t.text,
-            start=t.start_time,
-            end=t.end_time
+    participants = list(db_meeting.participants) if db_meeting.participants else []
+    
+    transcript_segments = []
+    for t in db_transcripts:
+        # Get speaker name from participants using speaker_index
+        speaker_index = t.speaker_index
+        speaker_name = participants[speaker_index]
+        
+        transcript_segments.append(
+            TranscriptSegmentResponse(
+                speaker_index=speaker_index,
+                speaker_name=speaker_name,
+                text=t.text,
+                start=t.start_time,
+                end=t.end_time
+            )
         )
-        for t in db_transcripts
-    ]
     
     audio_files = [db_meeting.audio_file] if db_meeting.audio_file else []
     
@@ -37,7 +42,7 @@ def db_meeting_to_model(db_meeting: DBMeeting, db_transcripts: List[DBTranscript
         id=db_meeting.id,
         title=db_meeting.title,
         created_at=db_meeting.created_at.isoformat() + "Z" if db_meeting.created_at else datetime.now().isoformat() + "Z",
-        participants=list(db_meeting.participants) if db_meeting.participants else [],
+        participants=participants,
         transcript=transcript_segments,
         audio_files=audio_files
     )
@@ -181,9 +186,10 @@ def update_transcript(meeting_id: str, transcript: List[Dict[str, Any]]) -> Opti
         
         # Add new transcripts
         for seg in transcript:
+            
             db_transcript = DBTranscript(
                 meeting_id=meeting_id,
-                speaker=db_meeting.participants[seg.get('speaker')],
+                speaker_index=seg.get('speaker_index'),
                 text=seg.get('text'),
                 start_time=seg.get('start', 0.0),
                 end_time=seg.get('end', 0.0)

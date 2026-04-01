@@ -2,7 +2,8 @@ import { useState } from 'react';
 import '../styles/TranscriptEditor.css';
 
 interface TranscriptSegment {
-  speaker: string;
+  speaker_index: number;
+  speaker_name: string;
   text: string;
   start: number;
   end: number;
@@ -72,7 +73,7 @@ function TranscriptEditor({ transcript, onUpdate, onSave }: TranscriptEditorProp
       <div className="segments-list">
         {transcript.map((segment, index) => (
           <div key={index} className="segment-item">
-            <div className="segment-speaker">{segment.speaker}</div>
+            <div className="segment-speaker">{segment.speaker_name}</div>
             <div className="segment-content">
               {editingId === index ? (
                 <div className="segment-edit">

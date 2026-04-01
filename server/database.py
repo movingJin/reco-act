@@ -32,7 +32,7 @@ class Transcript(Base):
     
     id = Column(Integer, primary_key=True, autoincrement=True)
     meeting_id = Column(String)
-    speaker = Column(String)
+    speaker_index = Column(Integer)
     text = Column(Text)
     start_time = Column(Float)
     end_time = Column(Float)
