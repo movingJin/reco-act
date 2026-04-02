@@ -1,0 +1,60 @@
+name: reco-act release to web
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      # Client 빌드
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build client
+        run: |
+          cd client
+          npm ci
+          npm run build
+      - name: Set ENV file
+        run: |
+          echo "${{ secrets.ENV_FILE }}" | base64 --decode > server/.env
+          find server
+      - name: Transfer build artifacts
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{secrets.PROD_HOST}}
+          username: ${{secrets.PROD_USERNAME}}
+          key: ${{secrets.PROD_PRIVATE_KEY}}
+          port: ${{secrets.PROD_PORT}}
+          source: "client/dist/*,client/Dockerfile,client/nginx.conf,server/*,docker-compose.yaml"
+          target: ${{ format('{0}/reco-act', secrets.SERVICE_ROOT) }}
+          overwrite: true
+          debug: true
+
+  deploy:
+    runs-on: ubuntu-latest
+    permissions: write-all
+    needs: build
+    
+    steps:
+    - name: Deploy to Instance
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{secrets.PROD_HOST}}
+        username: ${{secrets.PROD_USERNAME}}
+        key: ${{secrets.PROD_PRIVATE_KEY}}
+        port: ${{secrets.PROD_PORT}}
+        script: |
+          cd ${{ format('{0}/reco-act', secrets.SERVICE_ROOT) }}
+          PATH="/var/packages/ContainerManager/target/usr/bin/:$PATH"
+          pwd
+          docker-compose build
+          docker-compose down
+          docker-compose up -d
+          docker image prune -f
