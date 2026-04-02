@@ -54,6 +54,7 @@ jobs:
           cd ${{ format('{0}/reco-act', secrets.SERVICE_ROOT) }}
           PATH="/var/packages/ContainerManager/target/usr/bin/:$PATH"
           pwd
+          mkdir server/records
           docker-compose build
           docker-compose down
           docker-compose up -d
