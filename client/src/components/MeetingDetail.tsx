@@ -3,6 +3,7 @@ import axios from 'axios';
 import RecorderControls from './RecorderControls';
 import TranscriptEditor from './TranscriptEditor';
 import MeetingSettings from './MeetingSettings';
+import SummaryPanel from './SummaryPanel';
 import '../styles/MeetingDetail.css';
 
 interface TranscriptSegment {
@@ -119,61 +120,71 @@ function MeetingDetail({ meeting, onUpdate }: MeetingDetailProps) {
         </button>
       </div>
 
-      <div className="detail-content">
-        <section className="recorder-section">
-          <h3>녹음</h3>
-          <div className="recorder-container">
-            <RecorderControls onRecordingComplete={handleRecordingComplete} />
-            <div className="or-divider">또는</div>
-            <div className="file-upload-section">
-              <input
-                type="file"
-                id="wav-upload"
-                accept=".wav,audio/wav"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) {
-                    handleRecordingComplete(file as Blob);
-                  }
-                  e.target.value = '';
-                }}
-                style={{ display: 'none' }}
-                disabled={isUploading}
-              />
-              <label htmlFor="wav-upload" className="upload-button" style={{ opacity: isUploading ? 0.5 : 1, cursor: isUploading ? 'not-allowed' : 'pointer' }}>
-                📁 WAV 파일 업로드
-              </label>
-            </div>
-            {isUploading && (
-              <div className="upload-progress-container">
-                <div className="progress-text">
-                  <span>업로드 중...</span>
-                  <span className="progress-percentage">{uploadProgress}%</span>
+      <div className="detail-container">
+        {/* Left Side - Meeting Content */}
+        <div className="meeting-section">
+          <div className="detail-content">
+            <section className="recorder-section">
+              <h3>녹음</h3>
+              <div className="recorder-container">
+                <RecorderControls onRecordingComplete={handleRecordingComplete} />
+                <div className="or-divider">또는</div>
+                <div className="file-upload-section">
+                  <input
+                    type="file"
+                    id="wav-upload"
+                    accept=".wav,audio/wav"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        handleRecordingComplete(file as Blob);
+                      }
+                      e.target.value = '';
+                    }}
+                    style={{ display: 'none' }}
+                    disabled={isUploading}
+                  />
+                  <label htmlFor="wav-upload" className="upload-button" style={{ opacity: isUploading ? 0.5 : 1, cursor: isUploading ? 'not-allowed' : 'pointer' }}>
+                    📁 WAV 파일 업로드
+                  </label>
                 </div>
-                <div className="progress-bar-wrapper">
-                  <div className="progress-bar" style={{ width: `${uploadProgress}%` }}></div>
-                </div>
+                {isUploading && (
+                  <div className="upload-progress-container">
+                    <div className="progress-text">
+                      <span>업로드 중...</span>
+                      <span className="progress-percentage">{uploadProgress}%</span>
+                    </div>
+                    <div className="progress-bar-wrapper">
+                      <div className="progress-bar" style={{ width: `${uploadProgress}%` }}></div>
+                    </div>
+                  </div>
+                )}
+                {isProcessing && (
+                  <div className="processing-container">
+                    <div className="processing-spinner"></div>
+                    <span className="processing-text">업로드된 파일로부터 음성인식 중입니다. 잠시만 기다려주세요.</span>
+                  </div>
+                )}
               </div>
-            )}
-            {isProcessing && (
-              <div className="processing-container">
-                <div className="processing-spinner"></div>
-                <span className="processing-text">업로드된 파일로부터 음성인식 중입니다. 잠시만 기다려주세요.</span>
-              </div>
-            )}
-          </div>
-        </section>
+            </section>
 
-        <section className="transcript-section">
-          <div className="transcript-header">
-            <h3>회의 내용</h3>
+            <section className="transcript-section">
+              <div className="transcript-header">
+                <h3>회의 내용</h3>
+              </div>
+              <TranscriptEditor
+                transcript={transcript}
+                onUpdate={handleTranscriptUpdate}
+                onSave={handleSaveTranscript}
+              />
+            </section>
           </div>
-          <TranscriptEditor
-            transcript={transcript}
-            onUpdate={handleTranscriptUpdate}
-            onSave={handleSaveTranscript}
-          />
-        </section>
+        </div>
+
+        {/* Right Side - Summary Panel */}
+        <div className="summary-section-wrapper">
+          <SummaryPanel meetingId={meeting.id} />
+        </div>
       </div>
 
       {/* Settings Modal */}

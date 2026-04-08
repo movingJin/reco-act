@@ -3,12 +3,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from database import SessionLocal, Meeting as DBMeeting, Transcript as DBTranscript
-from models import Meeting, TranscriptSegmentResponse
-
-UPLOADS_DIR = Path(__file__).parent / "records"
-
-# Ensure directories exist
-UPLOADS_DIR.mkdir(exist_ok=True)
+from models.meeting import Meeting, TranscriptSegmentResponse
 
 
 def get_db():
@@ -44,7 +39,8 @@ def db_meeting_to_model(db_meeting: DBMeeting, db_transcripts: List[DBTranscript
         created_at=db_meeting.created_at.isoformat() + "Z" if db_meeting.created_at else datetime.now().isoformat() + "Z",
         participants=participants,
         transcript=transcript_segments,
-        audio_files=audio_files
+        audio_files=audio_files,
+        subject=db_meeting.subject
     )
 
 
@@ -224,6 +220,27 @@ def add_audio_file(meeting_id: str, audio_file_path: str) -> Optional[Meeting]:
         return db_meeting_to_model(db_meeting, db_transcripts)
     except Exception as e:
         print(f"Error adding audio file: {e}")
+        return None
+    finally:
+        db.close()
+
+
+def update_subject(meeting_id: str, subject: str) -> Optional[Meeting]:
+    """Update the subject of a meeting in database."""
+    db = get_db()
+    try:
+        db_meeting = db.query(DBMeeting).filter(DBMeeting.id == meeting_id).first()
+        if not db_meeting:
+            return None
+        
+        db_meeting.subject = subject
+        db.commit()
+        
+        db_transcripts = db.query(DBTranscript).filter(DBTranscript.meeting_id == meeting_id).all()
+        return db_meeting_to_model(db_meeting, db_transcripts)
+    except Exception as e:
+        print(f"Error updating subject: {e}")
+        db.rollback()
         return None
     finally:
         db.close()

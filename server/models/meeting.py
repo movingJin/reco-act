@@ -24,6 +24,10 @@ class MeetingSettingsRequest(BaseModel):
     participants: List[str]
 
 
+class UpdateSubjectRequest(BaseModel):
+    subject: str
+
+
 class TranscriptRequest(BaseModel):
     transcript: List[TranscriptSegmentResponse]
 
@@ -35,6 +39,7 @@ class Meeting(BaseModel):
     participants: List[str]
     transcript: List[TranscriptSegmentResponse] = []
     audio_files: List[str] = []
+    subject: Optional[str] = None
 
 
 class MeetingListResponse(BaseModel):

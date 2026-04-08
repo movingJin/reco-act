@@ -1,14 +1,12 @@
-import json
 import logging
-import os
-from typing import Union, TypedDict, Dict, Any, List
+from typing import TypedDict, Dict, Any, List
 
 from langchain_core.messages import SystemMessage, HumanMessage
 from langgraph.graph import StateGraph, END
 from openai import ContentFilterFinishReasonError, BadRequestError
 from pydantic import BaseModel, Field
 
-from meeting_service import load_meeting
+from services.meeting_service import load_meeting
 from utils.config import get_llm
 
 logger = logging.getLogger(__name__)
@@ -53,7 +51,7 @@ class SummaryNode:
         # 그래프 컴파일
         return workflow.compile()
 
-    def run(self, meeting_id: str) -> StructuredResult:
+    def run(self, meeting_id: str) -> StructuredResult | None:
         """단일 리드 처리"""
         initial_state = {
             "meeting_id": meeting_id,
@@ -67,16 +65,15 @@ class SummaryNode:
             subject = result.get("subject")
             paragraphs = result.get("paragraphs")
             next_steps = result.get("next_steps")
+            return StructuredResult(
+                subject=subject,
+                paragraphs=paragraphs,
+                next_steps=next_steps
+            )
         except (ContentFilterFinishReasonError, BadRequestError, ValueError) as e:
             paragraphs = str(e)
             print(f"{str(e)}")
-
-        return StructuredResult(
-            subject=subject,
-            paragraphs=paragraphs,
-            next_steps=next_steps
-        )
-
+            return None
 
 def create_paragraphs(state: NodeState) -> NodeState:
     """회의내용 단락 생성 함수"""

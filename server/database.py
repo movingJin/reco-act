@@ -25,6 +25,7 @@ class Meeting(Base):
     created_at = Column(TIMESTAMP, default=datetime.utcnow)
     participants = Column(ARRAY(String))
     audio_file = Column(String, nullable=True)
+    subject = Column(Text, nullable=True)
 
 
 class Transcript(Base):
@@ -36,6 +37,25 @@ class Transcript(Base):
     text = Column(Text)
     start_time = Column(Float)
     end_time = Column(Float)
+
+
+class Paragraph(Base):
+    __tablename__ = "paragraphs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    meeting_id = Column(String)
+    subject = Column(String)
+    start = Column(Integer)
+    end = Column(Integer)
+    summary = Column(Text)
+
+
+class NextStep(Base):
+    __tablename__ = "next_steps"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    meeting_id = Column(String)
+    todo = Column(Text)
 
 
 def init_db():

@@ -1,0 +1,365 @@
+.summary-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #f5f5f5;
+  border-left: 1px solid #ddd;
+  overflow: hidden;
+}
+
+.summary-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px;
+  background: #fff;
+  border-bottom: 1px solid #ddd;
+  flex-shrink: 0;
+}
+
+.summary-header h2 {
+  margin: 0;
+  font-size: 20px;
+  color: #333;
+}
+
+.generate-summary-btn {
+  padding: 8px 16px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  white-space: nowrap;
+}
+
+.generate-summary-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.generate-summary-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.summary-content {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+  gap: 20px;
+}
+
+.summary-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #999;
+  text-align: center;
+}
+
+.summary-placeholder p {
+  margin: 10px 0;
+  font-size: 14px;
+}
+
+.summary-section {
+  background: white;
+  border-radius: 8px;
+  padding: 16px;
+  border: 1px solid #eee;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.summary-section h3 {
+  margin: 0 0 12px 0;
+  font-size: 16px;
+  color: #333;
+  font-weight: 600;
+}
+
+.subject-section {
+  flex-shrink: 0;
+}
+
+.next-steps-section {
+  flex-shrink: 0;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.paragraphs-section {
+  flex: 1;
+  min-height: 200px;
+  overflow-y: auto;
+}
+
+/* Display Mode */
+.display-container {
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.display-container:hover {
+  background-color: #f9f9f9;
+}
+
+.subject-text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #555;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.next-steps-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.next-steps-list li {
+  padding: 8px 0;
+  padding-left: 24px;
+  position: relative;
+  font-size: 14px;
+  color: #555;
+  line-height: 1.5;
+}
+
+.next-steps-list li:before {
+  content: '✓';
+  position: absolute;
+  left: 0;
+  color: #667eea;
+  font-weight: bold;
+}
+
+.empty-text {
+  margin: 0;
+  font-size: 14px;
+  color: #bbb;
+  font-style: italic;
+}
+
+/* Edit Mode */
+.edit-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.edit-textarea,
+.edit-input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 80px;
+}
+
+.edit-input {
+  min-height: auto;
+}
+
+.edit-textarea:focus,
+.edit-input:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.edit-buttons {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.save-btn,
+.cancel-btn,
+.remove-btn,
+.add-step-btn {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.save-btn {
+  background: #4CAF50;
+  color: white;
+}
+
+.save-btn:hover:not(:disabled) {
+  background: #45a049;
+}
+
+.cancel-btn {
+  background: #f0f0f0;
+  color: #333;
+}
+
+.cancel-btn:hover:not(:disabled) {
+  background: #e0e0e0;
+}
+
+.remove-btn {
+  background: #ff6b6b;
+  color: white;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.remove-btn:hover {
+  background: #ff5252;
+}
+
+.add-step-btn {
+  background: #667eea;
+  color: white;
+  align-self: flex-start;
+}
+
+.add-step-btn:hover {
+  background: #5568d3;
+}
+
+.save-btn:disabled,
+.cancel-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Next Steps Edit */
+.next-steps-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.next-step-edit-item {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.next-step-input {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.next-step-input:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+/* Paragraphs */
+.paragraphs-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.paragraph-item {
+  background: #fafafa;
+  border: 1px solid #eee;
+  border-radius: 6px;
+  padding: 12px;
+  transition: all 0.2s;
+}
+
+.paragraph-item:hover {
+  background: #f5f5f5;
+  border-color: #ddd;
+}
+
+.paragraph-display {
+  cursor: pointer;
+}
+
+.paragraph-display h4 {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+}
+
+.paragraph-display p {
+  margin: 0;
+  font-size: 13px;
+  color: #666;
+  line-height: 1.5;
+}
+
+.paragraph-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.edit-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.edit-field label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #666;
+}
+
+.edit-field .edit-input {
+  min-height: auto;
+  padding: 8px 10px;
+}
+
+.edit-field .edit-textarea {
+  min-height: 60px;
+}
+
+/* Scrollbar styling */
+.summary-content::-webkit-scrollbar,
+.next-steps-section::-webkit-scrollbar,
+.paragraphs-section::-webkit-scrollbar {
+  width: 6px;
+}
+
+.summary-content::-webkit-scrollbar-track,
+.next-steps-section::-webkit-scrollbar-track,
+.paragraphs-section::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.summary-content::-webkit-scrollbar-thumb,
+.next-steps-section::-webkit-scrollbar-thumb,
+.paragraphs-section::-webkit-scrollbar-thumb {
+  background: #ccc;
+  border-radius: 3px;
+}
+
+.summary-content::-webkit-scrollbar-thumb:hover,
+.next-steps-section::-webkit-scrollbar-thumb:hover,
+.paragraphs-section::-webkit-scrollbar-thumb:hover {
+  background: #999;
+}

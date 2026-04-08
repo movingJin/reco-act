@@ -3,31 +3,27 @@ from pathlib import Path
 import os
 from datetime import datetime
 
-from models import (
+from models.meeting import (
     Meeting,
     MeetingListResponse,
     MeetingSettingsRequest,
+    UpdateSubjectRequest,
     TranscriptRequest,
     UploadAudioResponse,
     TranscriptSegment,
     TranscriptSegmentResponse,
 )
-from meeting_service import (
+from services.meeting_service import (
     list_all_meetings,
     load_meeting,
     create_meeting,
     update_meeting_settings,
     update_transcript,
     add_audio_file,
+    update_subject,
 )
-from database import init_db
 
 router = APIRouter()
-
-# 애플리케이션 시작 시 데이터베이스 테이블 초기화
-@router.on_event("startup")
-def startup_event():
-    init_db()
 
 UPLOADS_DIR = Path(__file__).parent.parent.parent / "records"
 UPLOADS_DIR.mkdir(exist_ok=True)
@@ -172,6 +168,15 @@ async def update_meeting_transcript(meeting_id: str, request: TranscriptRequest)
     if not meeting:
         raise HTTPException(status_code=404, detail="Meeting not found")
 
+    return meeting
+
+
+@router.put("/api/meetings/{meeting_id}/subject", response_model=Meeting)
+async def update_meeting_subject(meeting_id: str, request: UpdateSubjectRequest):
+    """Update meeting subject."""
+    meeting = update_subject(meeting_id, request.subject)
+    if not meeting:
+        raise HTTPException(status_code=404, detail="Meeting not found")
     return meeting
 
 
