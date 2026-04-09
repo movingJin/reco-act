@@ -172,7 +172,7 @@ function SummaryPanel({ meetingId }: SummaryPanelProps) {
             onClick={handleGenerateSummary}
             disabled={isLoading}
           >
-            {isLoading ? '생성 중...' : '🤖 AI요약'}
+            {isLoading ? '생성 중...' : 'AI요약'}
           </button>
         </div>
         <div className="summary-placeholder">
@@ -192,7 +192,7 @@ function SummaryPanel({ meetingId }: SummaryPanelProps) {
           onClick={handleGenerateSummary}
           disabled={isLoading}
         >
-          {isLoading ? '생성 중...' : '🤖 AI요약'}
+          {isLoading ? '생성 중...' : 'AI요약'}
         </button>
       </div>
 
@@ -259,7 +259,7 @@ function SummaryPanel({ meetingId }: SummaryPanelProps) {
                       className="remove-btn"
                       onClick={() => handleRemoveNextStep(index)}
                     >
-                      ✕
+                      ×
                     </button>
                   </div>
                 ))}

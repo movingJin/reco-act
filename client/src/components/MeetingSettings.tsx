@@ -74,7 +74,7 @@ function MeetingSettings({ meeting, onUpdate }: MeetingSettingsProps) {
                 onClick={() => handleRemoveParticipant(index)}
                 title="제거"
               >
-                ✕
+                ×
               </button>
             </div>
           ))}

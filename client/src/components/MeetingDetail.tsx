@@ -145,7 +145,7 @@ function MeetingDetail({ meeting, onUpdate }: MeetingDetailProps) {
                     disabled={isUploading}
                   />
                   <label htmlFor="wav-upload" className="upload-button" style={{ opacity: isUploading ? 0.5 : 1, cursor: isUploading ? 'not-allowed' : 'pointer' }}>
-                    📁 WAV 파일 업로드
+                    WAV 파일 업로드
                   </label>
                 </div>
                 {isUploading && (
@@ -197,7 +197,7 @@ function MeetingDetail({ meeting, onUpdate }: MeetingDetailProps) {
                 className="close-button"
                 onClick={() => setShowSettingsModal(false)}
               >
-                ✕
+                ×
               </button>
             </div>
             <div className="modal-body">
