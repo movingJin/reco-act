@@ -104,11 +104,10 @@ function SummaryPanel({ meetingId }: SummaryPanelProps) {
     }
   };
 
-  const handleSaveParagraph = async (paragraphIndex: number) => {
+  const handleSaveParagraph = async (paragraphId: number) => {
     if (!summary) return;
-    const original = summary.paragraphs[paragraphIndex];
-    const editedParagraph = paragraphEdits[paragraphIndex] || original;
-    const paragraphId = original.id;
+    const editedParagraph = paragraphEdits[paragraphId];
+    if (!editedParagraph) return;
 
     setIsSaving(true);
     try {
@@ -147,19 +146,30 @@ function SummaryPanel({ meetingId }: SummaryPanelProps) {
   };
 
   const handleParagraphChange = (
-    index: number,
+    paragraphId: number,
     field: keyof Paragraph,
     value: any
   ) => {
-    const original = summary!.paragraphs[index];
+    // Find the paragraph from summary by ID
+    const original = summary!.paragraphs.find(p => p.id === paragraphId);
+    if (!original) return;
+
     setParagraphEdits({
       ...paragraphEdits,
-      [index]: {
+      [paragraphId]: {
         ...original,
-        ...paragraphEdits[index],
+        ...paragraphEdits[paragraphId],
         [field]: value,
       },
     });
+  };
+
+  const formatTime = (ms: number): string => {
+    const totalSeconds = Math.floor(ms / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
   };
 
   if (!summary) {
@@ -313,21 +323,21 @@ function SummaryPanel({ meetingId }: SummaryPanelProps) {
           <h3>단락</h3>
           <div className="paragraphs-container">
             {summary.paragraphs && summary.paragraphs.length > 0 ? (
-              summary.paragraphs.map((paragraph, index) => (
-                <div key={index} className="paragraph-item">
-                  {editingParagraph === index ? (
+              summary.paragraphs.map((paragraph) => (
+                <div key={paragraph.id} className="paragraph-item">
+                  {editingParagraph === paragraph.id ? (
                     <div className="paragraph-edit">
                       <div className="edit-field">
                         <label>주제</label>
                         <input
                           type="text"
                           value={
-                            paragraphEdits[index]?.subject ||
+                            paragraphEdits[paragraph.id]?.subject ||
                             paragraph.subject
                           }
                           onChange={(e) =>
                             handleParagraphChange(
-                              index,
+                              paragraph.id!,
                               'subject',
                               e.target.value
                             )
@@ -339,12 +349,12 @@ function SummaryPanel({ meetingId }: SummaryPanelProps) {
                         <label>내용</label>
                         <textarea
                           value={
-                            paragraphEdits[index]?.summary ||
+                            paragraphEdits[paragraph.id]?.summary ||
                             paragraph.summary
                           }
                           onChange={(e) =>
                             handleParagraphChange(
-                              index,
+                              paragraph.id!,
                               'summary',
                               e.target.value
                             )
@@ -355,7 +365,7 @@ function SummaryPanel({ meetingId }: SummaryPanelProps) {
                       <div className="edit-buttons">
                         <button
                           className="save-btn"
-                          onClick={() => handleSaveParagraph(index)}
+                          onClick={() => handleSaveParagraph(paragraph.id!)}
                           disabled={isSaving}
                         >
                           {isSaving ? '저장 중...' : '저장'}
@@ -375,9 +385,14 @@ function SummaryPanel({ meetingId }: SummaryPanelProps) {
                   ) : (
                     <div
                       className="paragraph-display"
-                      onClick={() => setEditingParagraph(index)}
+                      onClick={() => setEditingParagraph(paragraph.id!)}
                     >
-                      <h4>{paragraph.subject}</h4>
+                      <div className="paragraph-header">
+                        <h4>{paragraph.subject}</h4>
+                        <div className="paragraph-time">
+                          {formatTime(paragraph.start)} - {formatTime(paragraph.end)}
+                        </div>
+                      </div>
                       <p>{paragraph.summary}</p>
                     </div>
                   )}

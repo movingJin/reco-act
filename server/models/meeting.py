@@ -28,6 +28,10 @@ class UpdateSubjectRequest(BaseModel):
     subject: str
 
 
+class UpdateTitleRequest(BaseModel):
+    title: str
+
+
 class TranscriptRequest(BaseModel):
     transcript: List[TranscriptSegmentResponse]
 

@@ -64,6 +64,14 @@ function App() {
     loadMeetings();
   };
 
+  const handleDeleteMeeting = (meetingId: string) => {
+    setMeetings(meetings.filter(m => m.id !== meetingId));
+    if (selectedMeeting?.id === meetingId) {
+      const remaining = meetings.filter(m => m.id !== meetingId);
+      setSelectedMeeting(remaining.length > 0 ? remaining[0] : null);
+    }
+  };
+
   if (loading) {
     return <div className="loading">로딩 중...</div>;
   }
@@ -76,6 +84,7 @@ function App() {
           selectedMeeting={selectedMeeting}
           onSelectMeeting={handleSelectMeeting}
           onCreateMeeting={handleCreateMeeting}
+          onDeleteMeeting={handleDeleteMeeting}
         />
       </div>
       <div className="right-panel">

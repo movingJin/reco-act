@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import axios from 'axios';
 import '../styles/MeetingList.css';
 
 interface TranscriptSegment {
@@ -23,6 +24,7 @@ interface MeetingListProps {
   selectedMeeting: Meeting | null;
   onSelectMeeting: (meeting: Meeting) => void;
   onCreateMeeting: (title: string) => void;
+  onDeleteMeeting?: (meetingId: string) => void;
 }
 
 function MeetingList({
@@ -30,8 +32,27 @@ function MeetingList({
   selectedMeeting,
   onSelectMeeting,
   onCreateMeeting,
+  onDeleteMeeting,
 }: MeetingListProps) {
   const [newTitle, setNewTitle] = useState('');
+
+  const handleDeleteMeeting = async (e: React.MouseEvent, meetingId: string) => {
+    e.stopPropagation();
+    
+    if (!window.confirm('정말로 이 회의를 삭제하시겠습니까? 모든 관련 데이터가 함께 삭제됩니다.')) {
+      return;
+    }
+
+    try {
+      await axios.delete(`/api/meetings/${meetingId}`);
+      if (onDeleteMeeting) {
+        onDeleteMeeting(meetingId);
+      }
+    } catch (error) {
+      console.error('Failed to delete meeting:', error);
+      alert('회의 삭제에 실패했습니다');
+    }
+  };
 
   const handleCreateClick = () => {
     if (newTitle.trim()) {
@@ -79,9 +100,18 @@ function MeetingList({
               className={`meeting-item ${selectedMeeting?.id === meeting.id ? 'active' : ''}`}
               onClick={() => onSelectMeeting(meeting)}
             >
-              <div className="meeting-title">{meeting.title}</div>
-              <div className="meeting-date">{formatDate(meeting.created_at)}</div>
-              <div className="meeting-participants">{formatParticipants(meeting.participants)}</div>
+              <div className="meeting-info">
+                <div className="meeting-title">{meeting.title}</div>
+                <div className="meeting-date">{formatDate(meeting.created_at)}</div>
+                <div className="meeting-participants">{formatParticipants(meeting.participants)}</div>
+              </div>
+              <button
+                className="btn-delete-meeting"
+                onClick={(e) => handleDeleteMeeting(e, meeting.id)}
+                title="회의 삭제"
+              >
+                🗑️
+              </button>
             </div>
           ))
         )}

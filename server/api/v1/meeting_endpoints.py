@@ -8,6 +8,7 @@ from models.meeting import (
     MeetingListResponse,
     MeetingSettingsRequest,
     UpdateSubjectRequest,
+    UpdateTitleRequest,
     TranscriptRequest,
     UploadAudioResponse,
     TranscriptSegment,
@@ -21,6 +22,8 @@ from services.meeting_service import (
     update_transcript,
     add_audio_file,
     update_subject,
+    update_meeting_title,
+    delete_meeting,
 )
 
 router = APIRouter()
@@ -178,6 +181,24 @@ async def update_meeting_subject(meeting_id: str, request: UpdateSubjectRequest)
     if not meeting:
         raise HTTPException(status_code=404, detail="Meeting not found")
     return meeting
+
+
+@router.put("/api/meetings/{meeting_id}/title", response_model=Meeting)
+async def update_meeting_title_endpoint(meeting_id: str, request: UpdateTitleRequest):
+    """Update meeting title."""
+    meeting = update_meeting_title(meeting_id, request.title)
+    if not meeting:
+        raise HTTPException(status_code=404, detail="Meeting not found")
+    return meeting
+
+
+@router.delete("/api/meetings/{meeting_id}")
+async def delete_meeting_endpoint(meeting_id: str):
+    """Delete a meeting and all related data (transcript, paragraph, next_steps)."""
+    success = delete_meeting(meeting_id)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to delete meeting")
+    return {"status": "ok", "message": "Meeting deleted successfully"}
 
 
 @router.get("/health")

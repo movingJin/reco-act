@@ -244,3 +244,52 @@ def update_subject(meeting_id: str, subject: str) -> Optional[Meeting]:
         return None
     finally:
         db.close()
+
+
+def update_meeting_title(meeting_id: str, title: str) -> Optional[Meeting]:
+    """Update the title of a meeting in database."""
+    db = get_db()
+    try:
+        db_meeting = db.query(DBMeeting).filter(DBMeeting.id == meeting_id).first()
+        if not db_meeting:
+            return None
+        
+        db_meeting.title = title
+        db.commit()
+        
+        db_transcripts = db.query(DBTranscript).filter(DBTranscript.meeting_id == meeting_id).all()
+        return db_meeting_to_model(db_meeting, db_transcripts)
+    except Exception as e:
+        print(f"Error updating meeting title: {e}")
+        db.rollback()
+        return None
+    finally:
+        db.close()
+
+
+def delete_meeting(meeting_id: str) -> bool:
+    """Delete a meeting and all related data (transcript, paragraph, next_steps)."""
+    from database import Paragraph, NextStep
+    
+    db = get_db()
+    try:
+        # Delete all related transcripts
+        db.query(DBTranscript).filter(DBTranscript.meeting_id == meeting_id).delete()
+        
+        # Delete all related paragraphs
+        db.query(Paragraph).filter(Paragraph.meeting_id == meeting_id).delete()
+        
+        # Delete all related next_steps
+        db.query(NextStep).filter(NextStep.meeting_id == meeting_id).delete()
+        
+        # Delete the meeting itself
+        db.query(DBMeeting).filter(DBMeeting.id == meeting_id).delete()
+        
+        db.commit()
+        return True
+    except Exception as e:
+        print(f"Error deleting meeting {meeting_id}: {e}")
+        db.rollback()
+        return False
+    finally:
+        db.close()

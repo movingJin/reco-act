@@ -11,6 +11,9 @@ def get_db():
 
 def db_summary_to_model(db_meeting: DBMeeting, db_paragraphs: List[DBParagraph], db_next_steps: List[DBNextStep]) -> SummaryResponse:
     """Convert database models to Pydantic SummaryResponse model."""
+    # Sort paragraphs by start time (ascending)
+    sorted_paragraphs = sorted(db_paragraphs, key=lambda p: p.start)
+    
     paragraphs = [
         Paragraph(
             id=p.id,
@@ -19,7 +22,7 @@ def db_summary_to_model(db_meeting: DBMeeting, db_paragraphs: List[DBParagraph],
             start=p.start,
             end=p.end
         )
-        for p in db_paragraphs
+        for p in sorted_paragraphs
     ]
     
     next_steps = [step.todo for step in db_next_steps]
@@ -86,24 +89,10 @@ def create_summary(meeting_id: str) -> Optional[SummaryResponse]:
         db_meeting.subject = summaries.subject
         db.commit()
         
-        # Create paragraphs with ID
-        paragraphs = [
-            Paragraph(
-                id=p.id,
-                subject=p.subject,
-                start=p.start,
-                end=p.end,
-                summary=p.summary
-            )
-            for p in db_paragraphs_list
-        ]
-        
-        return SummaryResponse(
-            meeting_id=meeting_id,
-            paragraphs=paragraphs,
-            next_steps=summaries.next_steps,
-            subject=summaries.subject
-        )
+        # Return updated summary (this will apply sorting via db_summary_to_model)
+        db_paragraphs = db.query(DBParagraph).filter(DBParagraph.meeting_id == meeting_id).all()
+        db_next_steps = db.query(DBNextStep).filter(DBNextStep.meeting_id == meeting_id).all()
+        return db_summary_to_model(db_meeting, db_paragraphs, db_next_steps)
     except Exception as e:
         print(f"Error creating meeting: {e}")
         db.rollback()

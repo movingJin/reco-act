@@ -69,6 +69,10 @@
   cursor: pointer;
   transition: background-color 0.2s;
   border-left: 3px solid transparent;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
 }
 
 .meeting-item:hover {
@@ -80,11 +84,17 @@
   border-left-color: #4a90e2;
 }
 
+.meeting-info {
+  flex: 1;
+  min-width: 0;
+}
+
 .meeting-title {
   font-weight: 600;
   color: #333;
   margin-bottom: 4px;
   font-size: 14px;
+  word-break: break-word;
 }
 
 .meeting-date {
@@ -96,6 +106,25 @@
 .meeting-participants {
   font-size: 12px;
   color: #999;
+}
+
+.btn-delete-meeting {
+  background: none;
+  border: none;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+  flex-shrink: 0;
+}
+
+.btn-delete-meeting:hover {
+  background-color: rgba(255, 0, 0, 0.1);
+}
+
+.btn-delete-meeting:active {
+  background-color: rgba(255, 0, 0, 0.2);
 }
 
 .empty-state {
