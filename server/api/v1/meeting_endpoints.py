@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi.responses import FileResponse
 from pathlib import Path
 import os
 from datetime import datetime
@@ -25,11 +26,12 @@ from services.meeting_service import (
     update_meeting_title,
     delete_meeting,
 )
+from utils.config import RECORDS_DIR
 
 router = APIRouter()
 
-UPLOADS_DIR = Path(__file__).parent.parent.parent / "records"
-UPLOADS_DIR.mkdir(exist_ok=True)
+# UPLOADS_DIR은 config에서 설정한 RECORDS_DIR 사용
+UPLOADS_DIR = RECORDS_DIR
 
 
 def parse_stt_output(utterances: list, participants: list = None) -> list:
@@ -199,6 +201,32 @@ async def delete_meeting_endpoint(meeting_id: str):
     if not success:
         raise HTTPException(status_code=500, detail="Failed to delete meeting")
     return {"status": "ok", "message": "Meeting deleted successfully"}
+
+
+@router.get("/api/meetings/{meeting_id}/download-audio")
+async def download_audio(meeting_id: str):
+    """Download the audio file for a meeting."""
+    meeting = load_meeting(meeting_id)
+    if not meeting:
+        raise HTTPException(status_code=404, detail="Meeting not found")
+    
+    if not meeting.audio_files or len(meeting.audio_files) == 0:
+        raise HTTPException(status_code=404, detail="No audio file found for this meeting")
+    
+    audio_file_path = meeting.audio_files[0]
+    file_path = Path(audio_file_path)
+    
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Audio file not found")
+    
+    # Extract filename from path for download
+    filename = file_path.name
+    
+    return FileResponse(
+        path=file_path,
+        filename=filename,
+        media_type="audio/wav"
+    )
 
 
 @router.get("/health")

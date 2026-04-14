@@ -136,6 +136,7 @@ section h3 {
 .file-upload-section {
   display: flex;
   justify-content: center;
+  gap: 12px;
 }
 
 .upload-button {
@@ -148,18 +149,32 @@ section h3 {
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
 }
 
 .upload-button:hover {
   background-color: #1976d2;
-  box-shadow: 0 2px 8px rgba(33, 150, 243, 0.3);
 }
 
-.upload-button:active {
-  transform: scale(0.98);
+.download-button {
+  padding: 12px 24px;
+  background-color: #4caf50;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.download-button:hover:not(:disabled) {
+  background-color: #388e3c;
+}
+
+.download-button:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .upload-progress-container {

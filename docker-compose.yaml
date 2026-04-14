@@ -22,10 +22,11 @@ services:
     container_name: reco-act-server
     restart: unless-stopped
     volumes:
-      - ./server/records:/workspace/server/records
+      - ./server/records:/app/records
     environment:
       - PYTHONPATH=/workspace
       - PYTHONUNBUFFERED=1
+      - ENVIRONMENT=prod
     networks:
       - app-network
     healthcheck:

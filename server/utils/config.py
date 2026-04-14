@@ -1,5 +1,6 @@
 import os, sys
 from typing import Dict, Any, List
+from pathlib import Path
 
 from dotenv import load_dotenv
 from langchain_core.documents import Document
@@ -7,19 +8,33 @@ from langchain_openai import AzureChatOpenAI, AzureOpenAIEmbeddings
 
 import logging
 
+# 로그 설정
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+inf = 9223372036854775807
+
 load_dotenv()
 
-# Azure OpenAI 설정
+ENVIRONMENT = os.getenv("ENVIRONMENT")  # 'local' or 'prod'
+
+if ENVIRONMENT == "prod":
+    # Docker 환경에서는 absolute path
+    RECORDS_DIR = Path("/app/records")
+else:
+    # 로컬 환경에서는 프로젝트 상대경로
+    RECORDS_DIR = Path(__file__).parent.parent / "records"
+
+RECORDS_DIR.mkdir(parents=True, exist_ok=True)
+
+logger.info(f"[CONFIG] Environment: {ENVIRONMENT}")
+logger.info(f"[CONFIG] Records directory: {RECORDS_DIR}")
+
+# ==================== Azure OpenAI 설정 ====================
 AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
 AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
 AZURE_OPENAI_DEPLOYMENT_NAME = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME")
 AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION", "2024-08-01-preview")
 AZURE_OPENAI_EMBEDDING = os.getenv("AZURE_OPENAI_EMBEDDING")
-
-# 로그 설정
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-inf = 9223372036854775807
 
 
 def get_llm(temperature: float = 0.3):

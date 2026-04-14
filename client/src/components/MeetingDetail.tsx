@@ -41,6 +41,28 @@ function MeetingDetail({ meeting, onUpdate }: MeetingDetailProps) {
     setTranscript(meeting.transcript || []);
   }, [meeting.id]);
 
+  const handleDownloadAudio = async () => {
+    try {
+      const response = await axios.get(
+        `/api/meetings/${meeting.id}/download-audio`,
+        { responseType: 'blob' }
+      );
+      
+      // Create a blob URL and trigger download
+      const url = window.URL.createObjectURL(response.data);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `meeting-${meeting.id}.wav`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Failed to download audio:', error);
+      alert('녹취 파일 다운로드에 실패했습니다');
+    }
+  };
+
   const handleTranscriptUpdate = (updatedTranscript: TranscriptSegment[]) => {
     setTranscript(updatedTranscript);
   };
@@ -92,11 +114,14 @@ function MeetingDetail({ meeting, onUpdate }: MeetingDetailProps) {
 
       if (response.data.segments) {
         setTranscript(response.data.segments);
-        // onUpdate()를 먼저 호출하지 않음 - transcript state만 업데이트
       }
       
       // 응답 수신 후 처리 완료
       setIsProcessing(false);
+      
+      // 업로드 완료 후 부모 컴포넌트의 재조회 로직 호출
+      // 이를 통해 meeting.audio_files가 업데이트되어 다운로드 버튼이 활성화됨
+      onUpdate();
     } catch (error) {
       console.error('Failed to upload audio:', error);
       alert('음성 파일 업로드에 실패했습니다');
@@ -147,6 +172,14 @@ function MeetingDetail({ meeting, onUpdate }: MeetingDetailProps) {
                   <label htmlFor="wav-upload" className="upload-button" style={{ opacity: isUploading ? 0.5 : 1, cursor: isUploading ? 'not-allowed' : 'pointer' }}>
                     WAV 파일 업로드
                   </label>
+                  <button
+                    className="download-button"
+                    onClick={handleDownloadAudio}
+                    disabled={!meeting.audio_files || meeting.audio_files.length === 0}
+                    title={meeting.audio_files && meeting.audio_files.length > 0 ? "녹취 파일 다운로드" : "업로드된 녹취 파일이 없습니다"}
+                  >
+                    🔽 녹취 다운로드
+                  </button>
                 </div>
                 {isUploading && (
                   <div className="upload-progress-container">

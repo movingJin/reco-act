@@ -1,6 +1,6 @@
 FROM python:3.10-slim
 
-WORKDIR /workspace/server
+WORKDIR /app
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -17,7 +17,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Create directories for data persistence
-RUN mkdir -p records
+RUN mkdir -p /app/records
 
 EXPOSE 8000
 
