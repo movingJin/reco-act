@@ -27,31 +27,12 @@ from services.meeting_service import (
     delete_meeting,
 )
 from utils.config import RECORDS_DIR
+from clova_stt import convert as clova_convert
 
 router = APIRouter()
 
 # UPLOADS_DIR은 config에서 설정한 RECORDS_DIR 사용
 UPLOADS_DIR = RECORDS_DIR
-
-
-def parse_stt_output(utterances: list, participants: list = None) -> list:
-    segments = []
-    if participants is None:
-        participants = []
-
-    for i, utterance in enumerate(utterances):
-        speaker_index = utterance['spk']
-        # Get speaker name from participants list
-        speaker_name = participants[speaker_index]
-
-        segments.append(TranscriptSegment(
-            speaker_index=speaker_index,
-            text=utterance['msg'],
-            start=utterance['start_at'],
-            end=utterance['start_at'] + utterance['duration']
-        ))
-
-    return segments
 
 
 @router.get("/api/meetings", response_model=MeetingListResponse)
@@ -89,7 +70,7 @@ async def update_settings(meeting_id: str, request: MeetingSettingsRequest):
 @router.post("/api/meetings/{meeting_id}/upload-audio", response_model=UploadAudioResponse)
 async def upload_audio(meeting_id: str, file: UploadFile = File(...)):
     """
-    Upload WAV file and run STT conversion.
+    Upload WAV file and run STT conversion using Naver Clova Speech.
     Returns the transcription segments.
     """
     # Verify meeting exists
@@ -103,27 +84,34 @@ async def upload_audio(meeting_id: str, file: UploadFile = File(...)):
         filename = f"meeting_{meeting_id}_{timestamp}.wav"
         file_path = UPLOADS_DIR / filename
 
+        # Create directory if it doesn't exist
+        UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+
         # Save file
         content = await file.read()
         with open(file_path, "wb") as f:
             f.write(content)
 
-        # Call STT convert function
-        # Set environment for stt.py
-        os.environ["AUDIO_PATH"] = str(file_path)
-        os.environ["PRESET"] = "sommers_basic"
-
+        # Call Clova STT conversion
         try:
-            from stt import convert
-            raw_transcript = convert()
+            # 도메인 용어가 있으면 전달 (향후 도메인 용어사전 추가 가능)
+            domain_terms = None
+            # 예: participants를 도메인 용어로 활용할 수도 있음
+            # domain_terms = meeting.participants if meeting.participants else None
+
+            segments = clova_convert(
+                file_path=str(file_path),
+                language="ko-KR",
+                domain_terms=domain_terms
+            )
         except Exception as e:
-            print(f"STT conversion error: {e}")
-            # Fallback: return placeholder if STT fails
-            raw_transcript = f"[STT 변환 오류] {str(e)}"
+            print(f"Clova STT conversion error: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"STT conversion failed: {str(e)}"
+            )
 
-        # Parse transcript into segments
-        segments = parse_stt_output(raw_transcript, meeting.participants)
-
+        # segments는 이미 TranscriptSegment 리스트 형식
         # Convert TranscriptSegment to TranscriptSegmentResponse for API response
         response_segments = []
         for seg in segments:
@@ -150,6 +138,8 @@ async def upload_audio(meeting_id: str, file: UploadFile = File(...)):
             meeting_id=meeting_id
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Upload error: {e}")
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")

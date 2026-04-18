@@ -7,8 +7,8 @@ class TranscriptSegment(BaseModel):
     """Internal model for transcript segment (uses speaker index)."""
     speaker_index: int
     text: str
-    start: float = 0.0
-    end: float = 0.0
+    start: int = 0  # milliseconds
+    end: int = 0    # milliseconds
 
 
 class TranscriptSegmentResponse(BaseModel):
@@ -16,8 +16,8 @@ class TranscriptSegmentResponse(BaseModel):
     speaker_index: int
     speaker_name: str
     text: str
-    start: float = 0.0
-    end: float = 0.0
+    start: int = 0  # milliseconds
+    end: int = 0    # milliseconds
 
 
 class MeetingSettingsRequest(BaseModel):

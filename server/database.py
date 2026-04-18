@@ -35,8 +35,8 @@ class Transcript(Base):
     meeting_id = Column(String)
     speaker_index = Column(Integer)
     text = Column(Text)
-    start_time = Column(Float)
-    end_time = Column(Float)
+    start_time = Column(Integer)  # milliseconds
+    end_time = Column(Integer)    # milliseconds
 
 
 class Paragraph(Base):

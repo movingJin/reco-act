@@ -187,8 +187,8 @@ def update_transcript(meeting_id: str, transcript: List[Dict[str, Any]]) -> Opti
                 meeting_id=meeting_id,
                 speaker_index=seg.get('speaker_index'),
                 text=seg.get('text'),
-                start_time=seg.get('start', 0.0),
-                end_time=seg.get('end', 0.0)
+                start_time=seg.get('start', 0),
+                end_time=seg.get('end', 0)
             )
             db.add(db_transcript)
         
