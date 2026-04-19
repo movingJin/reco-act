@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pathlib import Path
 import os
 from datetime import datetime
@@ -216,6 +216,39 @@ async def download_audio(meeting_id: str):
         path=file_path,
         filename=filename,
         media_type="audio/wav"
+    )
+
+
+@router.get("/api/meetings/{meeting_id}/download-transcript")
+async def download_transcript(meeting_id: str):
+    """Download the transcript of a meeting as a text file."""
+    meeting = load_meeting(meeting_id)
+    if not meeting:
+        raise HTTPException(status_code=404, detail="Meeting not found")
+    
+    if not meeting.transcript or len(meeting.transcript) == 0:
+        raise HTTPException(status_code=404, detail="No transcript found for this meeting")
+    
+    # Build transcript text with speaker names
+    transcript_text = f"회의록: {meeting.title}\n"
+    transcript_text += f"생성일: {meeting.created_at}\n"
+    transcript_text += f"참석자: {', '.join(meeting.participants)}\n"
+    transcript_text += "=" * 60 + "\n\n"
+    
+    for segment in meeting.transcript:
+        speaker_name = segment.speaker_name
+        text = segment.text
+        transcript_text += f"[{speaker_name}]\n{text}\n\n"
+    
+    # Convert text to bytes
+    transcript_bytes = transcript_text.encode('utf-8')
+    
+    return StreamingResponse(
+        iter([transcript_bytes]),
+        media_type="text/plain; charset=utf-8",
+        headers={
+            "Content-Disposition": f"attachment; filename=transcript-{meeting_id}.txt"
+        }
     )
 
 

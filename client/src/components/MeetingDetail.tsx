@@ -63,6 +63,28 @@ function MeetingDetail({ meeting, onUpdate }: MeetingDetailProps) {
     }
   };
 
+  const handleDownloadTranscript = async () => {
+    try {
+      const response = await axios.get(
+        `/api/meetings/${meeting.id}/download-transcript`,
+        { responseType: 'blob' }
+      );
+      
+      // Create a blob URL and trigger download
+      const url = window.URL.createObjectURL(response.data);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `transcript-${meeting.id}.txt`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Failed to download transcript:', error);
+      alert('대화 내용 다운로드에 실패했습니다');
+    }
+  };
+
   const handleTranscriptUpdate = (updatedTranscript: TranscriptSegment[]) => {
     setTranscript(updatedTranscript);
   };
@@ -179,6 +201,14 @@ function MeetingDetail({ meeting, onUpdate }: MeetingDetailProps) {
                     title={meeting.audio_files && meeting.audio_files.length > 0 ? "녹취 파일 다운로드" : "업로드된 녹취 파일이 없습니다"}
                   >
                     🔽 녹취 다운로드
+                  </button>
+                  <button
+                    className="download-button"
+                    onClick={handleDownloadTranscript}
+                    disabled={!transcript || transcript.length === 0}
+                    title={transcript && transcript.length > 0 ? "대화 내용을 텍스트로 다운로드" : "저장된 대화 내용이 없습니다"}
+                  >
+                    🔽 대화 내용 다운로드
                   </button>
                 </div>
                 {isUploading && (
