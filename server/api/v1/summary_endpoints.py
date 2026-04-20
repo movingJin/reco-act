@@ -1,6 +1,7 @@
 from typing import List
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 from models.summary import (
     SummaryResponse,
     UpdateParagraphRequest,
@@ -12,6 +13,7 @@ from services.summary_service import (
     create_summary,
     update_paragraph,
     update_next_steps,
+    generate_summary_text,
 )
 
 router = APIRouter()
@@ -52,3 +54,25 @@ async def update_next_steps_endpoint(meeting_id: str, request: UpdateNextStepReq
     if not result:
         raise HTTPException(status_code=404, detail="Meeting not found")
     return result
+
+
+@router.get("/api/summary/{meeting_id}/download")
+async def download_summary(meeting_id: str):
+    """Download the summary of a meeting as a text file."""
+    summary = load_summary(meeting_id)
+    if not summary:
+        raise HTTPException(status_code=404, detail="Summary not found")
+    
+    # Generate summary text
+    summary_text = generate_summary_text(summary)
+    
+    # Convert text to bytes
+    summary_bytes = summary_text.encode('utf-8')
+    
+    return StreamingResponse(
+        iter([summary_bytes]),
+        media_type="text/plain; charset=utf-8",
+        headers={
+            "Content-Disposition": f"attachment; filename=summary-{meeting_id}.txt"
+        }
+    )

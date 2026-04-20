@@ -23,6 +23,35 @@
   color: #333;
 }
 
+.summary-buttons {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.download-summary-btn {
+  padding: 8px 16px;
+  background-color: #4caf50;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.download-summary-btn:hover:not(:disabled) {
+  background-color: #388e3c;
+}
+
+.download-summary-btn:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 .generate-summary-btn {
   padding: 8px 16px;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);

@@ -164,6 +164,28 @@ function SummaryPanel({ meetingId }: SummaryPanelProps) {
     });
   };
 
+  const handleDownloadSummary = async () => {
+    try {
+      const response = await axios.get(
+        `/api/summary/${meetingId}/download`,
+        { responseType: 'blob' }
+      );
+      
+      // Create a blob URL and trigger download
+      const url = window.URL.createObjectURL(response.data);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `summary-${meetingId}.txt`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Failed to download summary:', error);
+      alert('요약 다운로드에 실패했습니다');
+    }
+  };
+
   const formatTime = (ms: number): string => {
     const totalSeconds = Math.floor(ms / 1000);
     const hours = Math.floor(totalSeconds / 3600);
@@ -197,13 +219,23 @@ function SummaryPanel({ meetingId }: SummaryPanelProps) {
     <div className="summary-panel">
       <div className="summary-header">
         <h2>AI 요약</h2>
-        <button
-          className="generate-summary-btn"
-          onClick={handleGenerateSummary}
-          disabled={isLoading}
-        >
-          {isLoading ? '생성 중...' : 'AI요약'}
-        </button>
+        <div className="summary-buttons">
+          <button
+            className="download-summary-btn"
+            onClick={handleDownloadSummary}
+            disabled={!summary || (summary.paragraphs.length === 0 && !summary.subject && summary.next_steps.length === 0)}
+            title={summary && (summary.paragraphs.length > 0 || summary.subject || summary.next_steps.length > 0) ? "요약 내용을 텍스트로 다운로드" : "먼저 AI 요약을 생성해주세요"}
+          >
+            🔽 요약 다운로드
+          </button>
+          <button
+            className="generate-summary-btn"
+            onClick={handleGenerateSummary}
+            disabled={isLoading}
+          >
+            {isLoading ? '생성 중...' : 'AI요약'}
+          </button>
+        </div>
       </div>
 
       <div className="summary-content">
