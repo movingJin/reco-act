@@ -25,6 +25,7 @@ interface MeetingListProps {
   onSelectMeeting: (meeting: Meeting) => void;
   onCreateMeeting: (title: string) => void;
   onDeleteMeeting?: (meetingId: string) => void;
+  onBeforeSelectMeeting?: () => Promise<boolean>;
 }
 
 function MeetingList({
@@ -33,6 +34,7 @@ function MeetingList({
   onSelectMeeting,
   onCreateMeeting,
   onDeleteMeeting,
+  onBeforeSelectMeeting,
 }: MeetingListProps) {
   const [newTitle, setNewTitle] = useState('');
 
@@ -98,7 +100,16 @@ function MeetingList({
             <div
               key={meeting.id}
               className={`meeting-item ${selectedMeeting?.id === meeting.id ? 'active' : ''}`}
-              onClick={() => onSelectMeeting(meeting)}
+              onClick={async () => {
+                if (onBeforeSelectMeeting) {
+                  const shouldProceed = await onBeforeSelectMeeting();
+                  if (shouldProceed) {
+                    onSelectMeeting(meeting);
+                  }
+                } else {
+                  onSelectMeeting(meeting);
+                }
+              }}
             >
               <div className="meeting-info">
                 <div className="meeting-title">{meeting.title}</div>

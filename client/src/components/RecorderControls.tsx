@@ -1,11 +1,17 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, forwardRef, useImperativeHandle } from 'react';
 import '../styles/RecorderControls.css';
 
 interface RecorderControlsProps {
   onRecordingComplete: (audioBlob: Blob) => void;
 }
 
-function RecorderControls({ onRecordingComplete }: RecorderControlsProps) {
+export interface RecorderControlsHandle {
+  isRecording: boolean;
+  stopRecordingWithoutUpload: () => void;
+}
+
+const RecorderControls = forwardRef<RecorderControlsHandle, RecorderControlsProps>(
+  ({ onRecordingComplete }, ref) => {
   const [isRecording, setIsRecording] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
@@ -68,7 +74,14 @@ function RecorderControls({ onRecordingComplete }: RecorderControlsProps) {
 
       mediaRecorderRef.current.onstop = () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
-        onRecordingComplete(audioBlob);
+        
+        // 업로드 여부를 묻는 확인 대화
+        const shouldUpload = window.confirm('녹취된 내용을 업로드 하시겠습니까?');
+        
+        if (shouldUpload) {
+          onRecordingComplete(audioBlob);
+        }
+        
         setIsRecording(false);
         setIsPaused(false);
         setRecordingTime(0);
@@ -79,6 +92,32 @@ function RecorderControls({ onRecordingComplete }: RecorderControlsProps) {
       }
     }
   };
+
+  const stopRecordingWithoutUpload = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      if (timerRef.current) clearInterval(timerRef.current);
+
+      // 녹취 데이터를 버리고 업로드하지 않음
+      audioChunksRef.current = [];
+
+      mediaRecorderRef.current.onstop = () => {
+        setIsRecording(false);
+        setIsPaused(false);
+        setRecordingTime(0);
+      };
+
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+      }
+    }
+  };
+
+  useImperativeHandle(ref, () => ({
+    isRecording,
+    stopRecordingWithoutUpload,
+  }));
+
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -120,6 +159,9 @@ function RecorderControls({ onRecordingComplete }: RecorderControlsProps) {
       )}
     </div>
   );
-}
+  }
+);
+
+RecorderControls.displayName = 'RecorderControls';
 
 export default RecorderControls;

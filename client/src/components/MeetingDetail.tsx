@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-import RecorderControls from './RecorderControls';
+import RecorderControls, { RecorderControlsHandle } from './RecorderControls';
 import TranscriptEditor from './TranscriptEditor';
 import MeetingSettings from './MeetingSettings';
 import SummaryPanel from './SummaryPanel';
@@ -26,20 +26,37 @@ interface Meeting {
 interface MeetingDetailProps {
   meeting: Meeting;
   onUpdate: () => void;
+  onRequestMeetingChange?: (newMeeting: Meeting) => Promise<boolean>;
+  onSetRecorderState?: (state: { isRecording: boolean; stopRecordingWithoutUpload: () => void }) => void;
 }
 
-function MeetingDetail({ meeting, onUpdate }: MeetingDetailProps) {
+function MeetingDetail({ meeting, onUpdate, onSetRecorderState }: MeetingDetailProps) {
   const [transcript, setTranscript] = useState<TranscriptSegment[]>(meeting.transcript || []);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const recorderRef = useRef<RecorderControlsHandle>(null);
 
   useEffect(() => {
     // 외부에서 meeting이 업데이트되었을 때만 transcript 동기화
     // (예: 저장 후 서버 새로고침)
     setTranscript(meeting.transcript || []);
   }, [meeting.id]);
+
+  useEffect(() => {
+    // recorderRef의 상태를 부모 컴포넌트에 전달
+    if (onSetRecorderState && recorderRef.current) {
+      onSetRecorderState({
+        get isRecording() {
+          return recorderRef.current?.isRecording ?? false;
+        },
+        stopRecordingWithoutUpload() {
+          recorderRef.current?.stopRecordingWithoutUpload();
+        },
+      });
+    }
+  }, [onSetRecorderState]);
 
   const handleDownloadAudio = async () => {
     try {
@@ -174,7 +191,7 @@ function MeetingDetail({ meeting, onUpdate }: MeetingDetailProps) {
             <section className="recorder-section">
               <h3>녹음</h3>
               <div className="recorder-container">
-                <RecorderControls onRecordingComplete={handleRecordingComplete} />
+                <RecorderControls ref={recorderRef} onRecordingComplete={handleRecordingComplete} />
                 <div className="or-divider">또는</div>
                 <div className="file-upload-section">
                   <input

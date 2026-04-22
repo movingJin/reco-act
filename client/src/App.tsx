@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import axios from 'axios';
 import MeetingList from './components/MeetingList';
 import MeetingDetail from './components/MeetingDetail';
@@ -25,6 +25,7 @@ function App() {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [selectedMeeting, setSelectedMeeting] = useState<Meeting | null>(null);
   const [loading, setLoading] = useState(true);
+  const recorderStateRef = useRef<{ isRecording: boolean; stopRecordingWithoutUpload: () => void } | null>(null);
 
   useEffect(() => {
     loadMeetings();
@@ -46,6 +47,30 @@ function App() {
 
   const handleSelectMeeting = (meeting: Meeting) => {
     setSelectedMeeting(meeting);
+  };
+
+  const handleBeforeSelectMeeting = async (): Promise<boolean> => {
+    // 현재 RecorderControls에서 녹취 중인지 확인
+    if (recorderStateRef.current?.isRecording) {
+      // 확인 대화 표시
+      return new Promise((resolve) => {
+        const userConfirmed = window.confirm(
+          '다른 회의로 이동하는 경우, 녹취가 중단됩니다. 녹취를 중단하고, 다른 회의로 이동할까요?'
+        );
+        
+        if (userConfirmed) {
+          // "예"를 눌렀을 때 - 녹취 중단 후 이동
+          recorderStateRef.current?.stopRecordingWithoutUpload();
+          resolve(true);
+        } else {
+          // "아니오"를 눌렀을 때 - 계속 녹취
+          resolve(false);
+        }
+      });
+    }
+    
+    // 녹취 중이 아니면 그냥 이동
+    return true;
   };
 
   const handleCreateMeeting = async (title: string) => {
@@ -102,6 +127,7 @@ function App() {
           onSelectMeeting={handleSelectMeeting}
           onCreateMeeting={handleCreateMeeting}
           onDeleteMeeting={handleDeleteMeeting}
+          onBeforeSelectMeeting={handleBeforeSelectMeeting}
         />
       </div>
       <div className="right-panel">
@@ -109,6 +135,9 @@ function App() {
           <MeetingDetail
             meeting={selectedMeeting}
             onUpdate={handleRefreshMeetings}
+            onSetRecorderState={(state) => {
+              recorderStateRef.current = state;
+            }}
           />
         ) : (
           <div className="no-selection">회의를 선택해주세요</div>
