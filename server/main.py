@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from api.routers import api_router
 from database import init_db
 
-app = FastAPI(title="Meeting Transcription API", version="1.0.0")
+app = FastAPI(title="Meeting Transcription API", version="1.0.0", max_request_size=100_000_000)  # 100MB
 
 # CORS 설정 (개발 환경)
 cors_origins = [
