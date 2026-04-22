@@ -3,6 +3,7 @@ import axios from 'axios';
 import RecorderControls, { RecorderControlsHandle } from './RecorderControls';
 import TranscriptEditor from './TranscriptEditor';
 import MeetingSettings from './MeetingSettings';
+import DomainSettings from './DomainSettings';
 import SummaryPanel from './SummaryPanel';
 import '../styles/MeetingDetail.css';
 
@@ -14,6 +15,11 @@ interface TranscriptSegment {
   end: number;
 }
 
+interface Domain {
+  domain_name: string;
+  keywords: string[];
+}
+
 interface Meeting {
   id: string;
   title: string;
@@ -21,6 +27,7 @@ interface Meeting {
   participants: string[];
   transcript: TranscriptSegment[];
   audio_files: string[];
+  domain_id?: string;
 }
 
 interface MeetingDetailProps {
@@ -32,7 +39,11 @@ interface MeetingDetailProps {
 
 function MeetingDetail({ meeting, onUpdate, onSetRecorderState }: MeetingDetailProps) {
   const [transcript, setTranscript] = useState<TranscriptSegment[]>(meeting.transcript || []);
-  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showParticipantSettingsModal, setShowParticipantSettingsModal] = useState(false);
+  const [showDomainSettingsModal, setShowDomainSettingsModal] = useState(false);
+  const [domains, setDomains] = useState<Domain[]>([]);
+  const [selectedDomain, setSelectedDomain] = useState<string | null>(meeting.domain_id || null);
+  const [isLoadingDomains, setIsLoadingDomains] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -42,6 +53,7 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState }: MeetingDetailP
     // 외부에서 meeting이 업데이트되었을 때만 transcript 동기화
     // (예: 저장 후 서버 새로고침)
     setTranscript(meeting.transcript || []);
+    setSelectedDomain(meeting.domain_id || null);
   }, [meeting.id]);
 
   useEffect(() => {
@@ -57,6 +69,35 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState }: MeetingDetailP
       });
     }
   }, [onSetRecorderState]);
+
+  useEffect(() => {
+    loadDomains();
+  }, []);
+
+  const loadDomains = async () => {
+    setIsLoadingDomains(true);
+    try {
+      const response = await axios.get<Domain[]>('/api/domains');
+      setDomains(response.data);
+    } catch (error) {
+      console.error('Failed to load domains:', error);
+    } finally {
+      setIsLoadingDomains(false);
+    }
+  };
+
+  const handleDomainChange = async (domainId: string | null) => {
+    try {
+      await axios.put(`/api/meetings/${meeting.id}/domain`, null, {
+        params: { domain_id: domainId }
+      });
+      setSelectedDomain(domainId);
+      onUpdate();
+    } catch (error) {
+      console.error('Failed to update domain:', error);
+      alert('도메인 설정에 실패했습니다');
+    }
+  };
 
   const handleDownloadAudio = async () => {
     try {
@@ -175,13 +216,39 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState }: MeetingDetailP
     <div className="meeting-detail">
       <div className="detail-header">
         <h1>{meeting.title}</h1>
-        <button 
-          className="settings-button"
-          onClick={() => setShowSettingsModal(true)}
-          title="회의 설정"
-        >
-          ⚙️
-        </button>
+        <div className="header-controls">
+          <div className="domain-selector-group">
+            <label htmlFor="domain-select">도메인:</label>
+            <select
+              id="domain-select"
+              value={selectedDomain || ''}
+              onChange={(e) => handleDomainChange(e.target.value || null)}
+              disabled={isLoadingDomains}
+              className="domain-select"
+            >
+              <option value="">도메인 선택 안함</option>
+              {domains.map((domain) => (
+                <option key={domain.domain_name} value={domain.domain_name}>
+                  {domain.domain_name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button
+            className="settings-button"
+            onClick={() => setShowParticipantSettingsModal(true)}
+            title="참여자 설정"
+          >
+            👥 참여자 설정
+          </button>
+          <button
+            className="settings-button"
+            onClick={() => setShowDomainSettingsModal(true)}
+            title="도메인 관리"
+          >
+            🏷️ 도메인 설정
+          </button>
+        </div>
       </div>
 
       <div className="detail-container">
@@ -267,15 +334,15 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState }: MeetingDetailP
         </div>
       </div>
 
-      {/* Settings Modal */}
-      {showSettingsModal && (
-        <div className="modal-overlay" onClick={() => setShowSettingsModal(false)}>
+      {/* Participant Settings Modal */}
+      {showParticipantSettingsModal && (
+        <div className="modal-overlay" onClick={() => setShowParticipantSettingsModal(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h2>회의 설정</h2>
+              <h2>참여자 설정</h2>
               <button
                 className="close-button"
-                onClick={() => setShowSettingsModal(false)}
+                onClick={() => setShowParticipantSettingsModal(false)}
               >
                 ×
               </button>
@@ -284,7 +351,7 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState }: MeetingDetailP
               <MeetingSettings 
                 meeting={meeting} 
                 onUpdate={() => {
-                  setShowSettingsModal(false);
+                  setShowParticipantSettingsModal(false);
                   onUpdate();
                 }}
               />
@@ -292,6 +359,16 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState }: MeetingDetailP
           </div>
         </div>
       )}
+
+      {/* Domain Settings Modal */}
+      <DomainSettings 
+        isOpen={showDomainSettingsModal}
+        onClose={() => setShowDomainSettingsModal(false)}
+        onUpdate={() => {
+          loadDomains();
+          onUpdate();
+        }}
+      />
     </div>
   );
 }

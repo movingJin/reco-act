@@ -13,6 +13,8 @@
   border-bottom: 2px solid #f0f0f0;
   background: white;
   flex-shrink: 0;
+  gap: 16px;
+  flex-wrap: wrap;
 }
 
 .detail-header h1 {
@@ -21,26 +23,108 @@
   color: #333;
   margin: 0;
   flex: 1;
+  min-width: 200px;
+}
+
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.domain-selector-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: #f5f5f5;
+  border-radius: 6px;
+  border: 1px solid #ddd;
+}
+
+.domain-selector-group label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #666;
+  margin: 0;
+  white-space: nowrap;
+}
+
+.domain-select {
+  padding: 6px 10px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 13px;
+  background: white;
+  cursor: pointer;
+  font-family: inherit;
+  min-width: 120px;
+}
+
+.domain-select:focus {
+  outline: none;
+  border-color: #2196f3;
+  box-shadow: 0 0 0 3px rgba(33, 150, 243, 0.1);
+}
+
+.domain-select:disabled {
+  background: #f0f0f0;
+  color: #999;
+  cursor: not-allowed;
 }
 
 .settings-button {
-  padding: 8px 12px;
-  background-color: #f0f0f0;
-  border: 1px solid #d0d0d0;
+  padding: 8px 14px;
+  background-color: #2196f3;
+  color: white;
+  border: none;
   border-radius: 6px;
-  font-size: 20px;
+  font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  min-width: 40px;
-  height: 40px;
+  gap: 6px;
+  white-space: nowrap;
 }
 
 .settings-button:hover {
-  background-color: #e0e0e0;
-  border-color: #999;
+  background-color: #1976d2;
+  box-shadow: 0 2px 8px rgba(33, 150, 243, 0.3);
+}
+
+.settings-button:active {
+  background-color: #1565c0;
+}
+
+@media (max-width: 768px) {
+  .detail-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .detail-header h1 {
+    width: 100%;
+    margin-bottom: 8px;
+  }
+
+  .header-controls {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .domain-selector-group {
+    flex: 1;
+    min-width: 150px;
+  }
+
+  .settings-button {
+    flex: 1;
+    justify-content: center;
+    min-width: 100px;
+  }
 }
 
 /* New layout: Left-Right split */

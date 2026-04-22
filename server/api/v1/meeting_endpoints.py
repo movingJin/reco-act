@@ -25,6 +25,8 @@ from services.meeting_service import (
     update_subject,
     update_meeting_title,
     delete_meeting,
+    get_domain_keywords,
+    update_meeting_domain,
 )
 from utils.config import RECORDS_DIR
 from clova_stt import convert as clova_convert
@@ -94,15 +96,24 @@ async def upload_audio(meeting_id: str, file: UploadFile = File(...)):
 
         # Call Clova STT conversion
         try:
-            # 도메인 용어가 있으면 전달 (향후 도메인 용어사전 추가 가능)
-            domain_terms = None
-            # 예: participants를 도메인 용어로 활용할 수도 있음
-            # domain_terms = meeting.participants if meeting.participants else None
+            # 미팅에 도메인이 설정되어 있으면 해당 도메인의 키워드를 조회
+            domain_keywords = None
+            if hasattr(meeting, 'domain_id') and meeting.domain_id:
+                # Meeting 모델에 domain_id를 반영해야 함 (아래에서 추가)
+                # 여기서는 db 직접 조회로 처리
+                from database import SessionLocal, Meeting as DBMeeting
+                db = SessionLocal()
+                try:
+                    db_meeting = db.query(DBMeeting).filter(DBMeeting.id == meeting_id).first()
+                    if db_meeting and db_meeting.domain_id:
+                        domain_keywords = get_domain_keywords(db_meeting.domain_id)
+                finally:
+                    db.close()
 
             segments = clova_convert(
                 file_path=str(file_path),
                 language="ko-KR",
-                domain_terms=domain_terms
+                domain_keywords=domain_keywords
             )
         except Exception as e:
             print(f"Clova STT conversion error: {e}")
@@ -179,6 +190,21 @@ async def update_meeting_subject(meeting_id: str, request: UpdateSubjectRequest)
 async def update_meeting_title_endpoint(meeting_id: str, request: UpdateTitleRequest):
     """Update meeting title."""
     meeting = update_meeting_title(meeting_id, request.title)
+    if not meeting:
+        raise HTTPException(status_code=404, detail="Meeting not found")
+    return meeting
+
+
+@router.put("/api/meetings/{meeting_id}/domain", response_model=Meeting)
+async def update_meeting_domain_endpoint(meeting_id: str, domain_id: str = None):
+    """
+    Update meeting domain for STT keyword boosting.
+    
+    Args:
+        meeting_id: 미팅 ID
+        domain_id: 도메인 ID (optional)
+    """
+    meeting = update_meeting_domain(meeting_id, domain_id)
     if not meeting:
         raise HTTPException(status_code=404, detail="Meeting not found")
     return meeting

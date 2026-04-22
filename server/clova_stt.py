@@ -40,6 +40,7 @@ class ClovaSpeechClient:
         file_path: str,
         language: str = "ko-KR",
         domain_terms: Optional[List[str]] = None,
+        domain_keywords: Optional[List[str]] = None,
     ) -> List[TranscriptSegment]:
         """
         음성 파일을 텍스트로 변환
@@ -47,7 +48,8 @@ class ClovaSpeechClient:
         Args:
             file_path: WAV 파일 경로
             language: 언어 코드 (기본값: ko-KR)
-            domain_terms: 도메인 용어 리스트 (힌트로 사용)
+            domain_terms: 도메인 용어 리스트 (힌트로 사용, 사용 중단)
+            domain_keywords: 도메인 키워드 리스트 (boostings로 사용)
 
         Returns:
             TranscriptSegment 리스트
@@ -63,10 +65,10 @@ class ClovaSpeechClient:
             "fullText": True,
         }
 
-        # 도메인 용어가 있으면 boostings 추가 (힌트)
-        if domain_terms:
+        # 도메인 키워드가 있으면 boostings 추가 (도메인별 키워드 인식율 향상)
+        if domain_keywords:
             params["boostings"] = [
-                {"words": ", ".join(domain_terms), "weight": 1.0}
+                {"words": ", ".join(domain_keywords), "weight": 1.0}
             ]
 
         # 요청 헤더 설정
@@ -152,6 +154,7 @@ def convert(
     file_path: str,
     language: str = "ko-KR",
     domain_terms: Optional[List[str]] = None,
+    domain_keywords: Optional[List[str]] = None,
 ) -> List[TranscriptSegment]:
     """
     편의 함수: 파일을 바로 변환
@@ -159,13 +162,16 @@ def convert(
     Args:
         file_path: 음성 파일 경로
         language: 언어 코드
-        domain_terms: 도메인 용어 리스트
+        domain_terms: 도메인 용어 리스트 (사용 중단)
+        domain_keywords: 도메인 키워드 리스트
 
     Returns:
         TranscriptSegment 리스트
     """
     client = ClovaSpeechClient()
-    return client.convert_file_to_transcript(file_path, language, domain_terms)
+    return client.convert_file_to_transcript(
+        file_path, language, domain_terms, domain_keywords
+    )
 
 
 if __name__ == "__main__":

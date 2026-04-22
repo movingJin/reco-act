@@ -26,6 +26,7 @@ class Meeting(Base):
     participants = Column(ARRAY(String))
     audio_file = Column(String, nullable=True)
     subject = Column(Text, nullable=True)
+    domain_id = Column(Integer, nullable=True)  # Foreign key to domain_keywords.id
 
 
 class Transcript(Base):
@@ -56,6 +57,14 @@ class NextStep(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     meeting_id = Column(String)
     todo = Column(Text)
+
+
+class DomainKeywords(Base):
+    __tablename__ = "domain_keywords"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    domain_name = Column(String)
+    keywords = Column(ARRAY(String))
 
 
 def init_db():

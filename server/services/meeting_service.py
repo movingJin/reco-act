@@ -2,7 +2,7 @@ from datetime import datetime
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any, Optional
-from database import SessionLocal, Meeting as DBMeeting, Transcript as DBTranscript
+from database import SessionLocal, Meeting as DBMeeting, Transcript as DBTranscript, DomainKeywords as DBDomainKeywords
 from models.meeting import Meeting, TranscriptSegmentResponse
 
 
@@ -40,7 +40,8 @@ def db_meeting_to_model(db_meeting: DBMeeting, db_transcripts: List[DBTranscript
         participants=participants,
         transcript=transcript_segments,
         audio_files=audio_files,
-        subject=db_meeting.subject
+        subject=db_meeting.subject,
+        domain_id=db_meeting.domain_id
     )
 
 
@@ -291,5 +292,61 @@ def delete_meeting(meeting_id: str) -> bool:
         print(f"Error deleting meeting {meeting_id}: {e}")
         db.rollback()
         return False
+    finally:
+        db.close()
+
+
+def get_domain_keywords(domain_id: str) -> Optional[List[str]]:
+    """
+    도메인 ID로 해당 도메인의 키워드 목록을 조회합니다.
+    
+    Args:
+        domain_id: 도메인 ID (domain_name)
+        
+    Returns:
+        키워드 리스트, 없으면 None
+    """
+    db = get_db()
+    try:
+        domain_keywords = db.query(DBDomainKeywords).filter(
+            DBDomainKeywords.domain_name == domain_id
+        ).first()
+        
+        if domain_keywords:
+            return list(domain_keywords.keywords)
+        return None
+    except Exception as e:
+        print(f"Error fetching domain keywords for domain_id {domain_id}: {e}")
+        return None
+    finally:
+        db.close()
+
+
+def update_meeting_domain(meeting_id: str, domain_id: Optional[str]) -> Optional[Meeting]:
+    """
+    미팅의 도메인 ID를 업데이트합니다.
+    
+    Args:
+        meeting_id: 미팅 ID
+        domain_id: 도메인 ID (None으로 해제 가능)
+        
+    Returns:
+        업데이트된 Meeting 객체
+    """
+    db = get_db()
+    try:
+        db_meeting = db.query(DBMeeting).filter(DBMeeting.id == meeting_id).first()
+        if not db_meeting:
+            return None
+        
+        db_meeting.domain_id = domain_id
+        db.commit()
+        
+        db_transcripts = db.query(DBTranscript).filter(DBTranscript.meeting_id == meeting_id).all()
+        return db_meeting_to_model(db_meeting, db_transcripts)
+    except Exception as e:
+        print(f"Error updating meeting domain: {e}")
+        db.rollback()
+        return None
     finally:
         db.close()
