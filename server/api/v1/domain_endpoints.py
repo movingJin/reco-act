@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from services.domain_service import (
     list_all_domains,
     get_domain,
+    get_domain_by_id,
     create_domain,
     update_domain,
     delete_domain,
@@ -79,6 +80,35 @@ async def get_domain_endpoint(domain_name: str):
         raise HTTPException(status_code=500, detail="Failed to fetch domain")
 
 
+@router.get("/api/domains/id/{domain_id}", response_model=DomainKeywordResponse)
+async def get_domain_by_id_endpoint(domain_id: int):
+    """
+    도메인 ID로 도메인 조회
+    
+    Args:
+        domain_id: 도메인 ID
+        
+    Returns:
+        도메인 키워드 정보
+    """
+    try:
+        domain = get_domain_by_id(domain_id)
+        
+        if not domain:
+            raise HTTPException(status_code=404, detail="Domain not found")
+        
+        return DomainKeywordResponse(
+            id=domain["id"],
+            domain_name=domain["domain_name"],
+            keywords=domain["keywords"]
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error fetching domain by id {domain_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch domain")
+
+
 @router.post("/api/domains", response_model=DomainKeywordResponse)
 async def create_domain_endpoint(request: DomainKeywordRequest):
     """
@@ -92,12 +122,8 @@ async def create_domain_endpoint(request: DomainKeywordRequest):
     """
     try:
         domain = create_domain(request.domain_name, request.keywords)
-        
         if not domain:
-            raise HTTPException(
-                status_code=409, 
-                detail=f"Domain '{request.domain_name}' already exists"
-            )
+            raise HTTPException(status_code=500, detail="Failed to create domain")
         
         return DomainKeywordResponse(
             id=domain["id"],
@@ -111,29 +137,23 @@ async def create_domain_endpoint(request: DomainKeywordRequest):
         raise HTTPException(status_code=500, detail="Failed to create domain")
 
 
-@router.put("/api/domains/{domain_name}", response_model=DomainKeywordResponse)
-async def update_domain_endpoint(domain_name: str, request: DomainKeywordRequest):
+@router.put("/api/domains/{domain_id}", response_model=DomainKeywordResponse)
+async def update_domain_endpoint(domain_id: int, request: DomainKeywordRequest):
     """
     도메인 키워드 업데이트
     
     Args:
-        domain_name: 도메인 이름 (URL 경로)
+        domain_id: 도메인 ID (URL 경로)
         request: 업데이트할 도메인 정보
         
     Returns:
         업데이트된 도메인 키워드 정보
     """
     try:
-        domain = update_domain(domain_name, request.domain_name, request.keywords)
+        domain = update_domain(domain_id, request.domain_name, request.keywords)
         
         if not domain:
-            if get_domain(domain_name) is None:
-                raise HTTPException(status_code=404, detail="Domain not found")
-            else:
-                raise HTTPException(
-                    status_code=409,
-                    detail=f"Domain '{request.domain_name}' already exists"
-                )
+            raise HTTPException(status_code=404, detail="Domain not found")
         
         return DomainKeywordResponse(
             id=domain["id"],
@@ -147,26 +167,26 @@ async def update_domain_endpoint(domain_name: str, request: DomainKeywordRequest
         raise HTTPException(status_code=500, detail="Failed to update domain")
 
 
-@router.delete("/api/domains/{domain_name}")
-async def delete_domain_endpoint(domain_name: str):
+@router.delete("/api/domains/{domain_id}")
+async def delete_domain_endpoint(domain_id: int):
     """
     도메인 키워드 삭제
     
     Args:
-        domain_name: 도메인 이름
+        domain_id: 도메인 ID
         
     Returns:
         삭제 결과
     """
     try:
-        success = delete_domain(domain_name)
+        success = delete_domain(domain_id)
         
         if not success:
             raise HTTPException(status_code=404, detail="Domain not found")
         
-        return {"status": "ok", "message": f"Domain '{domain_name}' deleted successfully"}
+        return {"status": "ok", "message": f"Domain '{domain_id}' deleted successfully"}
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error deleting domain: {e}")
+        print(f"Error deleting domain {domain_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete domain")

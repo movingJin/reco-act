@@ -26,9 +26,24 @@ function DomainSettings({ isOpen, onClose, onUpdate }: DomainSettingsProps) {
 
   useEffect(() => {
     if (isOpen) {
+      resetState();
       loadDomains();
     }
   }, [isOpen]);
+
+  const resetState = () => {
+    setEditMode('view');
+    setSelectedDomain(null);
+    setFormData({ domain_name: '', keywords: [] });
+    setNewKeyword('');
+    setErrorMessage('');
+    setIsSaving(false);
+  };
+
+  const handleClose = () => {
+    resetState();
+    onClose();
+  };
 
   const loadDomains = async () => {
     setIsLoading(true);
@@ -62,7 +77,7 @@ function DomainSettings({ isOpen, onClose, onUpdate }: DomainSettingsProps) {
 
   const handleEditClick = () => {
     if (selectedDomain) {
-      setFormData({ ...selectedDomain });
+      setFormData({ domain_name: selectedDomain.domain_name, keywords: selectedDomain.keywords });
       setNewKeyword('');
       setEditMode('edit');
       setErrorMessage('');
@@ -100,7 +115,7 @@ function DomainSettings({ isOpen, onClose, onUpdate }: DomainSettingsProps) {
       if (editMode === 'create') {
         await axios.post('/api/domains', formData);
       } else if (editMode === 'edit' && selectedDomain) {
-        await axios.put(`/api/domains/${selectedDomain.domain_name}`, formData);
+        await axios.put(`/api/domains/${selectedDomain.id}`, formData);
       }
 
       setEditMode('view');
@@ -126,7 +141,7 @@ function DomainSettings({ isOpen, onClose, onUpdate }: DomainSettingsProps) {
 
     setIsSaving(true);
     try {
-      await axios.delete(`/api/domains/${selectedDomain.domain_name}`);
+      await axios.delete(`/api/domains/${selectedDomain.id}`);
       setErrorMessage('');
       await loadDomains();
       onUpdate();
@@ -150,44 +165,46 @@ function DomainSettings({ isOpen, onClose, onUpdate }: DomainSettingsProps) {
   if (!isOpen) return null;
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={handleClose}>
       <div className="modal-content domain-settings-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2>도메인 설정</h2>
-          <button className="btn-close" onClick={onClose}>×</button>
+          <button className="btn-close" onClick={handleClose}>×</button>
         </div>
 
         <div className="modal-body">
           {isLoading ? (
             <div className="loading">도메인을 불러오는 중...</div>
           ) : (
-            <div className="domain-settings-container">
+            <div className={`domain-settings-container ${editMode === 'view' ? '' : 'single-column'}`}>
               {/* Domain List */}
-              <div className="domain-list-section">
-                <h3>도메인 목록</h3>
-                <div className="domain-list">
-                  {domains.length === 0 ? (
-                    <p className="empty-message">등록된 도메인이 없습니다</p>
-                  ) : (
-                    domains.map((domain) => (
-                      <div
-                        key={domain.domain_name}
-                        className={`domain-item ${
-                          selectedDomain?.domain_name === domain.domain_name ? 'selected' : ''
-                        }`}
-                        onClick={() => handleSelectDomain(domain)}
-                      >
-                        <span className="domain-name">{domain.domain_name}</span>
-                        <span className="keyword-count">({domain.keywords.length})</span>
-                      </div>
-                    ))
-                  )}
-                </div>
+              {editMode === 'view' && (
+                <div className="domain-list-section">
+                  <h3>도메인 목록</h3>
+                  <div className="domain-list">
+                    {domains.length === 0 ? (
+                      <p className="empty-message">등록된 도메인이 없습니다</p>
+                    ) : (
+                      domains.map((domain) => (
+                        <div
+                          key={domain.id}
+                          className={`domain-item ${
+                            selectedDomain?.id === domain.id ? 'selected' : ''
+                          }`}
+                          onClick={() => handleSelectDomain(domain)}
+                        >
+                          <span className="domain-name">{domain.domain_name}</span>
+                          <span className="keyword-count">({domain.keywords.length})</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
 
-                <button className="btn-primary" onClick={handleCreateClick}>
-                  + 새 도메인
-                </button>
-              </div>
+                  <button className="btn-primary" onClick={handleCreateClick}>
+                    + 새 도메인
+                  </button>
+                </div>
+              )}
 
               {/* Domain Editor */}
               <div className="domain-editor-section">
@@ -238,12 +255,7 @@ function DomainSettings({ isOpen, onClose, onUpdate }: DomainSettingsProps) {
                           setFormData({ ...formData, domain_name: e.target.value })
                         }
                         placeholder="예: 제조, 통신"
-                        disabled={editMode === 'edit'}
-                        className={editMode === 'edit' ? 'disabled' : ''}
                       />
-                      {editMode === 'edit' && (
-                        <small>도메인 이름은 수정할 수 없습니다</small>
-                      )}
                     </div>
 
                     <div className="form-group">

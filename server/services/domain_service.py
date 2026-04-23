@@ -123,14 +123,6 @@ def create_domain(domain_name: str, keywords: List[str]) -> Optional[dict]:
     """
     db = get_db()
     try:
-        # Check if domain already exists
-        existing = db.query(DBDomainKeywords).filter(
-            DBDomainKeywords.domain_name == domain_name
-        ).first()
-        
-        if existing:
-            return None  # Already exists
-        
         # Sort keywords before saving
         sorted_keywords = _sort_keywords(keywords)
         
@@ -155,13 +147,13 @@ def create_domain(domain_name: str, keywords: List[str]) -> Optional[dict]:
         db.close()
 
 
-def update_domain(domain_name: str, new_domain_name: str, keywords: List[str]) -> Optional[dict]:
+def update_domain(domain_id: int, new_domain_name: str, keywords: List[str]) -> Optional[dict]:
     """
     도메인 키워드 업데이트
     
     Args:
-        domain_name: 현재 도메인 이름
-        new_domain_name: 변경할 도메인 이름 (같을 수 있음)
+        domain_id: 도메인 ID (primary key)
+        new_domain_name: 변경할 도메인 이름
         keywords: 새 키워드 리스트
         
     Returns:
@@ -170,20 +162,13 @@ def update_domain(domain_name: str, new_domain_name: str, keywords: List[str]) -
     db = get_db()
     try:
         domain = db.query(DBDomainKeywords).filter(
-            DBDomainKeywords.domain_name == domain_name
+            DBDomainKeywords.id == domain_id
         ).first()
         
         if not domain:
             return None
         
-        # Check if new domain_name already exists (if different)
-        if new_domain_name != domain_name:
-            existing = db.query(DBDomainKeywords).filter(
-                DBDomainKeywords.domain_name == new_domain_name
-            ).first()
-            if existing:
-                return None  # Already exists
-            domain.domain_name = new_domain_name
+        domain.domain_name = new_domain_name
         
         # Sort keywords before saving
         sorted_keywords = _sort_keywords(keywords)
@@ -204,12 +189,12 @@ def update_domain(domain_name: str, new_domain_name: str, keywords: List[str]) -
         db.close()
 
 
-def delete_domain(domain_name: str) -> bool:
+def delete_domain(domain_id: int) -> bool:
     """
     도메인 키워드 삭제
     
     Args:
-        domain_name: 도메인 이름
+        domain_id: 도메인 ID (primary key)
         
     Returns:
         성공 여부
@@ -217,7 +202,7 @@ def delete_domain(domain_name: str) -> bool:
     db = get_db()
     try:
         domain = db.query(DBDomainKeywords).filter(
-            DBDomainKeywords.domain_name == domain_name
+            DBDomainKeywords.id == domain_id
         ).first()
         
         if not domain:
