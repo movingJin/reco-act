@@ -26,7 +26,7 @@ class Meeting(Base):
     participants = Column(ARRAY(String))
     audio_file = Column(String, nullable=True)
     subject = Column(Text, nullable=True)
-    domain_id = Column(Integer, nullable=True)  # Foreign key to domain_keywords.id
+    domain_id = Column(Integer, nullable=True)  # References DomainKeywords.id
 
 
 class Transcript(Base):

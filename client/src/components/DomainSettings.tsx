@@ -3,6 +3,7 @@ import axios from 'axios';
 import '../styles/DomainSettings.css';
 
 interface Domain {
+  id: number;
   domain_name: string;
   keywords: string[];
 }
@@ -19,7 +20,7 @@ function DomainSettings({ isOpen, onClose, onUpdate }: DomainSettingsProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [editMode, setEditMode] = useState<'view' | 'create' | 'edit'>('view');
-  const [formData, setFormData] = useState<Domain>({ domain_name: '', keywords: [] });
+  const [formData, setFormData] = useState<Omit<Domain, 'id'>>({ domain_name: '', keywords: [] });
   const [newKeyword, setNewKeyword] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
 

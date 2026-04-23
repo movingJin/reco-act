@@ -28,13 +28,14 @@ def list_all_domains() -> List[dict]:
     모든 도메인 키워드 목록 조회
     
     Returns:
-        도메인 정보 딕셔너리 리스트
+        도메인 정보 딕셔너리 리스트 (id, domain_name, keywords 포함)
     """
     db = get_db()
     try:
         domains = db.query(DBDomainKeywords).all()
         return [
             {
+                "id": domain.id,
                 "domain_name": domain.domain_name,
                 "keywords": list(domain.keywords)
             }
@@ -49,13 +50,13 @@ def list_all_domains() -> List[dict]:
 
 def get_domain(domain_name: str) -> Optional[dict]:
     """
-    특정 도메인의 키워드 조회
+    도메인 이름으로 도메인 조회
     
     Args:
         domain_name: 도메인 이름
         
     Returns:
-        도메인 정보 딕셔너리, 없으면 None
+        도메인 정보 딕셔너리 (id, domain_name, keywords 포함), 없으면 None
     """
     db = get_db()
     try:
@@ -67,11 +68,43 @@ def get_domain(domain_name: str) -> Optional[dict]:
             return None
         
         return {
+            "id": domain.id,
             "domain_name": domain.domain_name,
             "keywords": list(domain.keywords)
         }
     except Exception as e:
         print(f"Error fetching domain {domain_name}: {e}")
+        return None
+    finally:
+        db.close()
+
+
+def get_domain_by_id(domain_id: int) -> Optional[dict]:
+    """
+    도메인 ID로 도메인 조회
+    
+    Args:
+        domain_id: 도메인 ID (primary key)
+        
+    Returns:
+        도메인 정보 딕셔너리 (id, domain_name, keywords 포함), 없으면 None
+    """
+    db = get_db()
+    try:
+        domain = db.query(DBDomainKeywords).filter(
+            DBDomainKeywords.id == domain_id
+        ).first()
+        
+        if not domain:
+            return None
+        
+        return {
+            "id": domain.id,
+            "domain_name": domain.domain_name,
+            "keywords": list(domain.keywords)
+        }
+    except Exception as e:
+        print(f"Error fetching domain by id {domain_id}: {e}")
         return None
     finally:
         db.close()
@@ -110,6 +143,7 @@ def create_domain(domain_name: str, keywords: List[str]) -> Optional[dict]:
         db.commit()
         
         return {
+            "id": domain.id,
             "domain_name": domain.domain_name,
             "keywords": list(domain.keywords)
         }
@@ -158,6 +192,7 @@ def update_domain(domain_name: str, new_domain_name: str, keywords: List[str]) -
         db.commit()
         
         return {
+            "id": domain.id,
             "domain_name": domain.domain_name,
             "keywords": list(domain.keywords)
         }

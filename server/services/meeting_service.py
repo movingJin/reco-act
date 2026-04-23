@@ -296,20 +296,21 @@ def delete_meeting(meeting_id: str) -> bool:
         db.close()
 
 
-def get_domain_keywords(domain_id: str) -> Optional[List[str]]:
+def get_domain_keywords(domain_id: int) -> Optional[List[str]]:
     """
     도메인 ID로 해당 도메인의 키워드 목록을 조회합니다.
+    키워드는 데이터베이스에 정렬된 상태로 저장됩니다.
     
     Args:
-        domain_id: 도메인 ID (domain_name)
+        domain_id: 도메인 ID (DomainKeywords.id, primary key)
         
     Returns:
-        키워드 리스트, 없으면 None
+        정렬된 키워드 리스트, 없으면 None
     """
     db = get_db()
     try:
         domain_keywords = db.query(DBDomainKeywords).filter(
-            DBDomainKeywords.domain_name == domain_id
+            DBDomainKeywords.id == domain_id
         ).first()
         
         if domain_keywords:
@@ -322,13 +323,13 @@ def get_domain_keywords(domain_id: str) -> Optional[List[str]]:
         db.close()
 
 
-def update_meeting_domain(meeting_id: str, domain_id: Optional[str]) -> Optional[Meeting]:
+def update_meeting_domain(meeting_id: str, domain_id: Optional[int]) -> Optional[Meeting]:
     """
     미팅의 도메인 ID를 업데이트합니다.
     
     Args:
         meeting_id: 미팅 ID
-        domain_id: 도메인 ID (None으로 해제 가능)
+        domain_id: 도메인 ID (DomainKeywords.id, None으로 해제 가능)
         
     Returns:
         업데이트된 Meeting 객체

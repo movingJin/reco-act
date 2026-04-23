@@ -16,6 +16,7 @@ interface TranscriptSegment {
 }
 
 interface Domain {
+  id: number;
   domain_name: string;
   keywords: string[];
 }
@@ -27,7 +28,7 @@ interface Meeting {
   participants: string[];
   transcript: TranscriptSegment[];
   audio_files: string[];
-  domain_id?: string;
+  domain_id?: number;
 }
 
 interface MeetingDetailProps {
@@ -42,7 +43,7 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState }: MeetingDetailP
   const [showParticipantSettingsModal, setShowParticipantSettingsModal] = useState(false);
   const [showDomainSettingsModal, setShowDomainSettingsModal] = useState(false);
   const [domains, setDomains] = useState<Domain[]>([]);
-  const [selectedDomain, setSelectedDomain] = useState<string | null>(meeting.domain_id || null);
+  const [selectedDomain, setSelectedDomain] = useState<number | null>(meeting.domain_id || null);
   const [isLoadingDomains, setIsLoadingDomains] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
@@ -86,7 +87,7 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState }: MeetingDetailP
     }
   };
 
-  const handleDomainChange = async (domainId: string | null) => {
+  const handleDomainChange = async (domainId: number | null) => {
     try {
       await axios.put(`/api/meetings/${meeting.id}/domain`, null, {
         params: { domain_id: domainId }
@@ -222,13 +223,13 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState }: MeetingDetailP
             <select
               id="domain-select"
               value={selectedDomain || ''}
-              onChange={(e) => handleDomainChange(e.target.value || null)}
+              onChange={(e) => handleDomainChange(e.target.value ? parseInt(e.target.value) : null)}
               disabled={isLoadingDomains}
               className="domain-select"
             >
               <option value="">도메인 선택 안함</option>
               {domains.map((domain) => (
-                <option key={domain.domain_name} value={domain.domain_name}>
+                <option key={domain.id} value={domain.id}>
                   {domain.domain_name}
                 </option>
               ))}

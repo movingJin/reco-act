@@ -44,7 +44,7 @@ class Meeting(BaseModel):
     transcript: List[TranscriptSegmentResponse] = []
     audio_files: List[str] = []
     subject: Optional[str] = None
-    domain_id: Optional[int] = None  # Foreign key to domain_keywords.id
+    domain_id: Optional[int] = None  # References DomainKeywords.id
 
 
 class MeetingListResponse(BaseModel):

@@ -11,7 +11,7 @@ interface Meeting {
   participants: string[];
   transcript: TranscriptSegment[];
   audio_files: string[];
-  domain_id?: string;
+  domain_id?: number;
 }
 
 interface TranscriptSegment {
