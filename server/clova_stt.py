@@ -39,7 +39,6 @@ class ClovaSpeechClient:
         self,
         file_path: str,
         language: str = "ko-KR",
-        domain_terms: Optional[List[str]] = None,
         domain_keywords: Optional[List[str]] = None,
     ) -> List[TranscriptSegment]:
         """
@@ -48,7 +47,6 @@ class ClovaSpeechClient:
         Args:
             file_path: WAV 파일 경로
             language: 언어 코드 (기본값: ko-KR)
-            domain_terms: 도메인 용어 리스트 (힌트로 사용, 사용 중단)
             domain_keywords: 도메인 키워드 리스트 (boostings로 사용)
 
         Returns:
@@ -153,7 +151,6 @@ class ClovaSpeechClient:
 def convert(
     file_path: str,
     language: str = "ko-KR",
-    domain_terms: Optional[List[str]] = None,
     domain_keywords: Optional[List[str]] = None,
 ) -> List[TranscriptSegment]:
     """
@@ -162,7 +159,6 @@ def convert(
     Args:
         file_path: 음성 파일 경로
         language: 언어 코드
-        domain_terms: 도메인 용어 리스트 (사용 중단)
         domain_keywords: 도메인 키워드 리스트
 
     Returns:
@@ -170,19 +166,5 @@ def convert(
     """
     client = ClovaSpeechClient()
     return client.convert_file_to_transcript(
-        file_path, language, domain_terms, domain_keywords
+        file_path, language, domain_keywords
     )
-
-
-if __name__ == "__main__":
-    # 테스트 코드
-    import sys
-
-    if len(sys.argv) > 1:
-        audio_file = sys.argv[1]
-        domain_terms = sys.argv[2:] if len(sys.argv) > 2 else None
-        segments = convert(audio_file, domain_terms=domain_terms)
-        for seg in segments:
-            print(seg)
-    else:
-        print("Usage: python clova_stt.py <audio_file> [domain_term1] [domain_term2] ...")

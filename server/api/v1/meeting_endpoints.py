@@ -126,7 +126,7 @@ async def upload_audio(meeting_id: str, file: UploadFile = File(...)):
         # Convert TranscriptSegment to TranscriptSegmentResponse for API response
         response_segments = []
         for seg in segments:
-            speaker_index = seg.speaker_index
+            speaker_index = seg.speaker_index % len(meeting.participants)  # 안전하게 인덱스 계산
             speaker_name = meeting.participants[speaker_index]
             response_segments.append(TranscriptSegmentResponse(
                 speaker_index=speaker_index,
