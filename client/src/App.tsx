@@ -90,17 +90,15 @@ function App() {
     // 현재 선택된 회의의 ID를 저장
     const currentMeetingId = selectedMeeting?.id;
     
-    // 모든 회의 목록 재조회
+    // 모든 회의 목록 재조회 (transcript 없이)
     try {
       const response = await axios.get<{ meetings: Meeting[] }>('/api/meetings');
       setMeetings(response.data.meetings);
       
-      // 현재 선택된 회의를 다시 조회하여 업데이트된 정보로 교체
+      // 현재 선택된 회의의 상세정보만 다시 조회 (transcript 포함)
       if (currentMeetingId) {
-        const updatedMeeting = response.data.meetings.find(m => m.id === currentMeetingId);
-        if (updatedMeeting) {
-          setSelectedMeeting(updatedMeeting);
-        }
+        const updatedMeetingResponse = await axios.get<Meeting>(`/api/meetings/${currentMeetingId}`);
+        setSelectedMeeting(updatedMeetingResponse.data);
       }
     } catch (error) {
       console.error('Failed to refresh meetings:', error);

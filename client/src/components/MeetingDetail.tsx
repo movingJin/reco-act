@@ -51,9 +51,18 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState }: MeetingDetailP
   const recorderRef = useRef<RecorderControlsHandle>(null);
 
   useEffect(() => {
-    // 외부에서 meeting이 업데이트되었을 때만 transcript 동기화
-    // (예: 저장 후 서버 새로고침)
-    setTranscript(meeting.transcript || []);
+    // 회의가 변경되면 서버에서 transcript 로드
+    const loadMeetingWithTranscript = async () => {
+      try {
+        const response = await axios.get(`/api/meetings/${meeting.id}`);
+        setTranscript(response.data.transcript || []);
+      } catch (error) {
+        console.error('Failed to load meeting transcript:', error);
+        setTranscript([]);
+      }
+    };
+    
+    loadMeetingWithTranscript();
     setSelectedDomain(meeting.domain_id || null);
   }, [meeting.id]);
 

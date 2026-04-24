@@ -11,25 +11,26 @@ def get_db():
     return SessionLocal()
 
 
-def db_meeting_to_model(db_meeting: DBMeeting, db_transcripts: List[DBTranscript]) -> Meeting:
+def db_meeting_to_model(db_meeting: DBMeeting, db_transcripts: List[DBTranscript] = None) -> Meeting:
     """Convert database models to Pydantic Meeting model."""
     participants = list(db_meeting.participants) if db_meeting.participants else []
     
     transcript_segments = []
-    for t in db_transcripts:
-        # Get speaker name from participants using speaker_index
-        speaker_index = t.speaker_index
-        speaker_name = participants[speaker_index]
-        
-        transcript_segments.append(
-            TranscriptSegmentResponse(
-                speaker_index=speaker_index,
-                speaker_name=speaker_name,
-                text=t.text,
-                start=t.start_time,
-                end=t.end_time
+    if db_transcripts:
+        for t in db_transcripts:
+            # Get speaker name from participants using speaker_index
+            speaker_index = t.speaker_index
+            speaker_name = participants[speaker_index] if speaker_index < len(participants) else "Unknown"
+            
+            transcript_segments.append(
+                TranscriptSegmentResponse(
+                    speaker_index=speaker_index,
+                    speaker_name=speaker_name,
+                    text=t.text,
+                    start=t.start_time,
+                    end=t.end_time
+                )
             )
-        )
     
     audio_files = [db_meeting.audio_file] if db_meeting.audio_file else []
     
@@ -99,15 +100,15 @@ def save_meeting(meeting: Meeting) -> bool:
 
 
 def list_all_meetings() -> List[Meeting]:
-    """List all meetings from database."""
+    """List all meetings from database without transcripts for faster initial load."""
     db = get_db()
     meetings = []
     try:
         db_meetings = db.query(DBMeeting).order_by(DBMeeting.created_at.desc()).all()
         
         for db_meeting in db_meetings:
-            db_transcripts = db.query(DBTranscript).filter(DBTranscript.meeting_id == db_meeting.id).all()
-            meetings.append(db_meeting_to_model(db_meeting, db_transcripts))
+            # Load meeting without transcripts for faster initial list load
+            meetings.append(db_meeting_to_model(db_meeting, db_transcripts=None))
     except Exception as e:
         print(f"Error listing meetings: {e}")
     finally:
