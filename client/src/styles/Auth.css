@@ -1,0 +1,608 @@
+/* ==================== 공통 스타일 ==================== */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #f5f5f5;
+}
+
+/* ==================== 인증 페이지 ==================== */
+.auth-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 20px;
+}
+
+.auth-box {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  width: 100%;
+  max-width: 420px;
+  padding: 40px 30px;
+}
+
+.auth-logo {
+  text-align: center;
+  font-size: 32px;
+  font-weight: 700;
+  color: #667eea;
+  margin-bottom: 10px;
+  letter-spacing: -0.5px;
+}
+
+.auth-title {
+  text-align: center;
+  font-size: 24px;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 8px;
+}
+
+.auth-subtitle {
+  text-align: center;
+  font-size: 14px;
+  color: #666;
+  margin-bottom: 24px;
+}
+
+.auth-form {
+  margin-bottom: 24px;
+}
+
+.form-group {
+  margin-bottom: 16px;
+}
+
+.form-group label {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  color: #333;
+  margin-bottom: 8px;
+}
+
+.form-group input {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 14px;
+  transition: all 0.3s ease;
+}
+
+.form-group input:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.form-group input:disabled {
+  background-color: #f5f5f5;
+  color: #999;
+  cursor: not-allowed;
+}
+
+/* 비밀번호 검증 스타일 */
+.form-group input.input-success {
+  border-color: #3c3;
+  background-color: #fafffa;
+}
+
+.form-group input.input-success:focus {
+  border-color: #3c3;
+  box-shadow: 0 0 0 3px rgba(51, 204, 51, 0.1);
+}
+
+.form-group input.input-error {
+  border-color: #c33;
+  background-color: #fffaf9;
+}
+
+.form-group input.input-error:focus {
+  border-color: #c33;
+  box-shadow: 0 0 0 3px rgba(204, 51, 51, 0.1);
+}
+
+.form-success {
+  font-size: 12px;
+  color: #3c3;
+  margin-top: 6px;
+  font-weight: 500;
+}
+
+.form-error {
+  font-size: 12px;
+  color: #c33;
+  margin-top: 6px;
+  font-weight: 500;
+}
+
+.form-help {
+  font-size: 12px;
+  color: #999;
+  margin-top: 6px;
+}
+
+.input-with-button {
+  display: flex;
+  gap: 8px;
+}
+
+.input-with-button input {
+  flex: 1;
+}
+
+.inline-button {
+  padding: 0 14px;
+  background-color: #667eea;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.3s ease;
+}
+
+.inline-button:hover:not(:disabled) {
+  background-color: #764ba2;
+}
+
+.inline-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.auth-button {
+  width: 100%;
+  padding: 12px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin-top: 8px;
+}
+
+.auth-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+}
+
+.auth-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.error-message {
+  background-color: #fee;
+  color: #c33;
+  padding: 12px 14px;
+  border-radius: 6px;
+  margin-bottom: 20px;
+  font-size: 14px;
+  border-left: 4px solid #c33;
+}
+
+.success-message {
+  background-color: #efe;
+  color: #3c3;
+  padding: 12px 14px;
+  border-radius: 6px;
+  margin-bottom: 20px;
+  font-size: 14px;
+  border-left: 4px solid #3c3;
+}
+
+.auth-divider {
+  text-align: center;
+  margin: 24px 0;
+  color: #999;
+  font-size: 13px;
+  position: relative;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: 45%;
+  height: 1px;
+  background-color: #ddd;
+}
+
+.auth-divider::before {
+  left: 0;
+}
+
+.auth-divider::after {
+  right: 0;
+}
+
+.auth-links {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.auth-link {
+  flex: 1;
+  text-align: center;
+  padding: 10px;
+  color: #667eea;
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+  border: 1px solid #667eea;
+  border-radius: 6px;
+  transition: all 0.3s ease;
+}
+
+.auth-link:hover {
+  background-color: #f5f5f5;
+  color: #764ba2;
+  border-color: #764ba2;
+}
+
+.auth-link-button {
+  width: 100%;
+  padding: 10px;
+  margin-top: 16px;
+  background-color: transparent;
+  color: #667eea;
+  border: 1px solid #667eea;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.auth-link-button:hover:not(:disabled) {
+  background-color: #f5f5f5;
+  color: #764ba2;
+  border-color: #764ba2;
+}
+
+.auth-link-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ==================== 프로필 페이지 ==================== */
+.profile-container {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  min-height: 100vh;
+  background-color: #f5f5f5;
+  padding: 40px 20px;
+}
+
+.profile-box {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  width: 100%;
+  max-width: 500px;
+  padding: 40px;
+}
+
+.profile-title {
+  font-size: 28px;
+  font-weight: 700;
+  color: #333;
+  margin-bottom: 32px;
+  text-align: center;
+}
+
+.profile-content {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+.profile-section {
+  border-bottom: 1px solid #eee;
+  padding-bottom: 24px;
+}
+
+.profile-section:last-child {
+  border-bottom: none;
+}
+
+.profile-section h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 16px;
+}
+
+.profile-info {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.info-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.info-item label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #999;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+  letter-spacing: 0.5px;
+}
+
+.info-item p {
+  font-size: 15px;
+  color: #333;
+}
+
+.name-display {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  background-color: #f9f9f9;
+  border-radius: 6px;
+}
+
+.name-display p {
+  margin: 0;
+}
+
+.edit-button {
+  padding: 6px 12px;
+  background-color: #667eea;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.edit-button:hover {
+  background-color: #764ba2;
+}
+
+.edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.edit-form input,
+.edit-form select.domain-select {
+  padding: 10px 12px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 14px;
+  background-color: white;
+}
+
+.edit-form input:focus,
+.edit-form select.domain-select:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.edit-form select.domain-select:disabled {
+  background-color: #f5f5f5;
+  color: #999;
+  cursor: not-allowed;
+}
+
+.edit-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.edit-buttons button {
+  flex: 1;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.edit-buttons button:first-child {
+  background-color: #667eea;
+  color: white;
+}
+
+.edit-buttons button:first-child:hover:not(:disabled) {
+  background-color: #764ba2;
+}
+
+.edit-buttons button:last-child {
+  background-color: #eee;
+  color: #333;
+}
+
+.edit-buttons button:last-child:hover:not(:disabled) {
+  background-color: #ddd;
+}
+
+.edit-buttons button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.profile-section.actions {
+  border-bottom: none;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 12px;
+}
+
+.logout-button,
+.delete-button {
+  flex: 1;
+  padding: 12px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.logout-button {
+  background-color: #667eea;
+  color: white;
+}
+
+.logout-button:hover {
+  background-color: #764ba2;
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+}
+
+.delete-button {
+  background-color: #f5f5f5;
+  color: #c33;
+  border: 1px solid #f0cccc;
+}
+
+.delete-button:hover {
+  background-color: #ffe;
+  border-color: #c33;
+}
+
+/* ==================== 모달 ==================== */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.6);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  padding: 20px;
+}
+
+.modal-box {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  width: 100%;
+  max-width: 400px;
+  padding: 32px 28px;
+  animation: slideUp 0.3s ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.modal-box h3 {
+  font-size: 20px;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 12px;
+}
+
+.modal-warning {
+  color: #666;
+  font-size: 14px;
+  line-height: 1.6;
+  margin-bottom: 20px;
+}
+
+.modal-buttons {
+  display: flex;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.modal-buttons button {
+  flex: 1;
+  padding: 12px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.modal-buttons .delete-button {
+  background-color: #c33;
+  color: white;
+  border: none;
+}
+
+.modal-buttons .delete-button:hover:not(:disabled) {
+  background-color: #a22;
+}
+
+.cancel-button {
+  background-color: #eee;
+  color: #333;
+}
+
+.cancel-button:hover:not(:disabled) {
+  background-color: #ddd;
+}
+
+/* ==================== 반응형 디자인 ==================== */
+@media (max-width: 480px) {
+  .auth-box {
+    padding: 30px 20px;
+  }
+
+  .auth-title {
+    font-size: 20px;
+  }
+
+  .profile-box {
+    padding: 24px 20px;
+  }
+
+  .profile-title {
+    font-size: 24px;
+  }
+
+  .modal-box {
+    padding: 24px 20px;
+  }
+}

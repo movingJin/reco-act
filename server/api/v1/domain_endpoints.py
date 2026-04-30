@@ -1,9 +1,10 @@
 """
 도메인 키워드 관리 엔드포인트
 """
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from typing import List
 from pydantic import BaseModel
+
 from services.domain_service import (
     list_all_domains,
     get_domain,
@@ -12,6 +13,8 @@ from services.domain_service import (
     update_domain,
     delete_domain,
 )
+from utils.auth import get_current_user
+from database import User
 
 
 router = APIRouter()
@@ -29,7 +32,7 @@ class DomainKeywordResponse(BaseModel):
 
 
 @router.get("/api/domains", response_model=List[DomainKeywordResponse])
-async def list_domains():
+async def list_domains(current_user: User = Depends(get_current_user)):
     """
     모든 도메인 키워드 목록 조회
     
@@ -52,7 +55,7 @@ async def list_domains():
 
 
 @router.get("/api/domains/{domain_name}", response_model=DomainKeywordResponse)
-async def get_domain_endpoint(domain_name: str):
+async def get_domain_endpoint(domain_name: str, current_user: User = Depends(get_current_user)):
     """
     특정 도메인의 키워드 조회
     
@@ -81,7 +84,7 @@ async def get_domain_endpoint(domain_name: str):
 
 
 @router.get("/api/domains/id/{domain_id}", response_model=DomainKeywordResponse)
-async def get_domain_by_id_endpoint(domain_id: int):
+async def get_domain_by_id_endpoint(domain_id: int, current_user: User = Depends(get_current_user)):
     """
     도메인 ID로 도메인 조회
     
@@ -110,7 +113,7 @@ async def get_domain_by_id_endpoint(domain_id: int):
 
 
 @router.post("/api/domains", response_model=DomainKeywordResponse)
-async def create_domain_endpoint(request: DomainKeywordRequest):
+async def create_domain_endpoint(request: DomainKeywordRequest, current_user: User = Depends(get_current_user)):
     """
     새 도메인 키워드 추가
     
@@ -138,7 +141,7 @@ async def create_domain_endpoint(request: DomainKeywordRequest):
 
 
 @router.put("/api/domains/{domain_id}", response_model=DomainKeywordResponse)
-async def update_domain_endpoint(domain_id: int, request: DomainKeywordRequest):
+async def update_domain_endpoint(domain_id: int, request: DomainKeywordRequest, current_user: User = Depends(get_current_user)):
     """
     도메인 키워드 업데이트
     
@@ -168,7 +171,7 @@ async def update_domain_endpoint(domain_id: int, request: DomainKeywordRequest):
 
 
 @router.delete("/api/domains/{domain_id}")
-async def delete_domain_endpoint(domain_id: int):
+async def delete_domain_endpoint(domain_id: int, current_user: User = Depends(get_current_user)):
     """
     도메인 키워드 삭제
     

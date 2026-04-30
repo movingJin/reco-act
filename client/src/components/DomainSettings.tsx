@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import axios from 'axios';
+import { apiClient } from '../api/authApi';
 import '../styles/DomainSettings.css';
 
 interface Domain {
@@ -48,7 +48,7 @@ function DomainSettings({ isOpen, onClose, onUpdate }: DomainSettingsProps) {
   const loadDomains = async () => {
     setIsLoading(true);
     try {
-      const response = await axios.get<Domain[]>('/api/domains');
+      const response = await apiClient.get<Domain[]>('/api/domains');
       setDomains(response.data);
       if (response.data.length > 0) {
         setSelectedDomain(response.data[0]);
@@ -113,9 +113,9 @@ function DomainSettings({ isOpen, onClose, onUpdate }: DomainSettingsProps) {
     setIsSaving(true);
     try {
       if (editMode === 'create') {
-        await axios.post('/api/domains', formData);
+        await apiClient.post('/api/domains', formData);
       } else if (editMode === 'edit' && selectedDomain) {
-        await axios.put(`/api/domains/${selectedDomain.id}`, formData);
+        await apiClient.put(`/api/domains/${selectedDomain.id}`, formData);
       }
 
       setEditMode('view');
@@ -141,7 +141,7 @@ function DomainSettings({ isOpen, onClose, onUpdate }: DomainSettingsProps) {
 
     setIsSaving(true);
     try {
-      await axios.delete(`/api/domains/${selectedDomain.id}`);
+      await apiClient.delete(`/api/domains/${selectedDomain.id}`);
       setErrorMessage('');
       await loadDomains();
       onUpdate();

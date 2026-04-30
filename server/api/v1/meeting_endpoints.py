@@ -1,8 +1,8 @@
-from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi import APIRouter, HTTPException, UploadFile, File, Depends
 from fastapi.responses import FileResponse, StreamingResponse
 from pathlib import Path
-import os
 from datetime import datetime
+from sqlalchemy.orm import Session
 
 from models.meeting import (
     Meeting,
@@ -12,7 +12,6 @@ from models.meeting import (
     UpdateTitleRequest,
     TranscriptRequest,
     UploadAudioResponse,
-    TranscriptSegment,
     TranscriptSegmentResponse,
 )
 from services.meeting_service import (
@@ -29,6 +28,8 @@ from services.meeting_service import (
     update_meeting_domain,
 )
 from utils.config import RECORDS_DIR
+from utils.auth import get_current_user
+from database import get_db, User, Meeting as DBMeeting
 from clova_stt import convert as clova_convert
 
 router = APIRouter()
@@ -37,23 +38,35 @@ router = APIRouter()
 UPLOADS_DIR = RECORDS_DIR
 
 
+def verify_meeting_ownership(meeting_id: str, user_email: str, db: Session) -> None:
+    """미팅의 소유자가 user_email과 일치하는지 확인합니다. 없거나 다른 소유자면 404로 응답."""
+    owned = (
+        db.query(DBMeeting.id)
+        .filter(DBMeeting.id == meeting_id, DBMeeting.user_id == user_email)
+        .first()
+    )
+    if not owned:
+        raise HTTPException(status_code=404, detail="Meeting not found")
+
+
 @router.get("/api/meetings", response_model=MeetingListResponse)
-async def get_meetings():
-    """Get list of all meetings."""
-    meetings = list_all_meetings()
+async def get_meetings(current_user: User = Depends(get_current_user)):
+    """Get list of meetings owned by the current user."""
+    meetings = list_all_meetings(current_user.email)
     return MeetingListResponse(meetings=meetings)
 
 
 @router.post("/api/meetings", response_model=Meeting)
-async def create_new_meeting(title: str, participants: list = None):
+async def create_new_meeting(title: str, participants: list = None, current_user: User = Depends(get_current_user)):
     """Create a new meeting."""
-    meeting = create_meeting(title, participants)
+    meeting = create_meeting(title, participants, current_user.email)
     return meeting
 
 
 @router.get("/api/meetings/{meeting_id}", response_model=Meeting)
-async def get_meeting(meeting_id: str):
+async def get_meeting(meeting_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Get a specific meeting."""
+    verify_meeting_ownership(meeting_id, current_user.email, db)
     meeting = load_meeting(meeting_id)
     if not meeting:
         raise HTTPException(status_code=404, detail="Meeting not found")
@@ -61,8 +74,9 @@ async def get_meeting(meeting_id: str):
 
 
 @router.post("/api/meetings/{meeting_id}/settings", response_model=Meeting)
-async def update_settings(meeting_id: str, request: MeetingSettingsRequest):
+async def update_settings(meeting_id: str, request: MeetingSettingsRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Update meeting settings (participants)."""
+    verify_meeting_ownership(meeting_id, current_user.email, db)
     meeting = update_meeting_settings(meeting_id, request.participants)
     if not meeting:
         raise HTTPException(status_code=404, detail="Meeting not found")
@@ -70,11 +84,13 @@ async def update_settings(meeting_id: str, request: MeetingSettingsRequest):
 
 
 @router.post("/api/meetings/{meeting_id}/upload-audio", response_model=UploadAudioResponse)
-async def upload_audio(meeting_id: str, file: UploadFile = File(...)):
+async def upload_audio(meeting_id: str, file: UploadFile = File(...), current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """
     Upload WAV file and run STT conversion using Naver Clova Speech.
     Returns the transcription segments.
     """
+    verify_meeting_ownership(meeting_id, current_user.email, db)
+
     # Verify meeting exists
     meeting = load_meeting(meeting_id)
     if not meeting:
@@ -101,14 +117,14 @@ async def upload_audio(meeting_id: str, file: UploadFile = File(...)):
             if hasattr(meeting, 'domain_id') and meeting.domain_id:
                 # Meeting 모델에 domain_id를 반영해야 함 (아래에서 추가)
                 # 여기서는 db 직접 조회로 처리
-                from database import SessionLocal, Meeting as DBMeeting
-                db = SessionLocal()
+                from database import SessionLocal, Meeting as DBMeetingLocal
+                db_local = SessionLocal()
                 try:
-                    db_meeting = db.query(DBMeeting).filter(DBMeeting.id == meeting_id).first()
+                    db_meeting = db_local.query(DBMeetingLocal).filter(DBMeetingLocal.id == meeting_id).first()
                     if db_meeting and db_meeting.domain_id:
                         domain_keywords = get_domain_keywords(db_meeting.domain_id)
                 finally:
-                    db.close()
+                    db_local.close()
 
             segments = clova_convert(
                 file_path=str(file_path),
@@ -157,8 +173,9 @@ async def upload_audio(meeting_id: str, file: UploadFile = File(...)):
 
 
 @router.post("/api/meetings/{meeting_id}/transcript", response_model=Meeting)
-async def update_meeting_transcript(meeting_id: str, request: TranscriptRequest):
+async def update_meeting_transcript(meeting_id: str, request: TranscriptRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Update and save the transcript of a meeting."""
+    verify_meeting_ownership(meeting_id, current_user.email, db)
     # Convert TranscriptSegmentResponse to internal format (speaker_index only)
     transcript_data = [
         {
@@ -178,8 +195,9 @@ async def update_meeting_transcript(meeting_id: str, request: TranscriptRequest)
 
 
 @router.put("/api/meetings/{meeting_id}/subject", response_model=Meeting)
-async def update_meeting_subject(meeting_id: str, request: UpdateSubjectRequest):
+async def update_meeting_subject(meeting_id: str, request: UpdateSubjectRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Update meeting subject."""
+    verify_meeting_ownership(meeting_id, current_user.email, db)
     meeting = update_subject(meeting_id, request.subject)
     if not meeting:
         raise HTTPException(status_code=404, detail="Meeting not found")
@@ -187,8 +205,9 @@ async def update_meeting_subject(meeting_id: str, request: UpdateSubjectRequest)
 
 
 @router.put("/api/meetings/{meeting_id}/title", response_model=Meeting)
-async def update_meeting_title_endpoint(meeting_id: str, request: UpdateTitleRequest):
+async def update_meeting_title_endpoint(meeting_id: str, request: UpdateTitleRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Update meeting title."""
+    verify_meeting_ownership(meeting_id, current_user.email, db)
     meeting = update_meeting_title(meeting_id, request.title)
     if not meeting:
         raise HTTPException(status_code=404, detail="Meeting not found")
@@ -196,14 +215,15 @@ async def update_meeting_title_endpoint(meeting_id: str, request: UpdateTitleReq
 
 
 @router.put("/api/meetings/{meeting_id}/domain", response_model=Meeting)
-async def update_meeting_domain_endpoint(meeting_id: str, domain_id: str = None):
+async def update_meeting_domain_endpoint(meeting_id: str, domain_id: str = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """
     Update meeting domain for STT keyword boosting.
-    
+
     Args:
         meeting_id: 미팅 ID
         domain_id: 도메인 ID (optional)
     """
+    verify_meeting_ownership(meeting_id, current_user.email, db)
     meeting = update_meeting_domain(meeting_id, domain_id)
     if not meeting:
         raise HTTPException(status_code=404, detail="Meeting not found")
@@ -211,8 +231,9 @@ async def update_meeting_domain_endpoint(meeting_id: str, domain_id: str = None)
 
 
 @router.delete("/api/meetings/{meeting_id}")
-async def delete_meeting_endpoint(meeting_id: str):
+async def delete_meeting_endpoint(meeting_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Delete a meeting and all related data (transcript, paragraph, next_steps)."""
+    verify_meeting_ownership(meeting_id, current_user.email, db)
     success = delete_meeting(meeting_id)
     if not success:
         raise HTTPException(status_code=500, detail="Failed to delete meeting")
@@ -220,24 +241,25 @@ async def delete_meeting_endpoint(meeting_id: str):
 
 
 @router.get("/api/meetings/{meeting_id}/download-audio")
-async def download_audio(meeting_id: str):
+async def download_audio(meeting_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Download the audio file for a meeting."""
+    verify_meeting_ownership(meeting_id, current_user.email, db)
     meeting = load_meeting(meeting_id)
     if not meeting:
         raise HTTPException(status_code=404, detail="Meeting not found")
-    
+
     if not meeting.audio_files or len(meeting.audio_files) == 0:
         raise HTTPException(status_code=404, detail="No audio file found for this meeting")
-    
+
     audio_file_path = meeting.audio_files[0]
     file_path = Path(audio_file_path)
-    
+
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Audio file not found")
-    
+
     # Extract filename from path for download
     filename = file_path.name
-    
+
     return FileResponse(
         path=file_path,
         filename=filename,
@@ -246,29 +268,30 @@ async def download_audio(meeting_id: str):
 
 
 @router.get("/api/meetings/{meeting_id}/download-transcript")
-async def download_transcript(meeting_id: str):
+async def download_transcript(meeting_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Download the transcript of a meeting as a text file."""
+    verify_meeting_ownership(meeting_id, current_user.email, db)
     meeting = load_meeting(meeting_id)
     if not meeting:
         raise HTTPException(status_code=404, detail="Meeting not found")
-    
+
     if not meeting.transcript or len(meeting.transcript) == 0:
         raise HTTPException(status_code=404, detail="No transcript found for this meeting")
-    
+
     # Build transcript text with speaker names
     transcript_text = f"회의록: {meeting.title}\n"
     transcript_text += f"생성일: {meeting.created_at}\n"
     transcript_text += f"참석자: {', '.join(meeting.participants)}\n"
     transcript_text += "=" * 60 + "\n\n"
-    
+
     for segment in meeting.transcript:
         speaker_name = segment.speaker_name
         text = segment.text
         transcript_text += f"[{speaker_name}]\n{text}\n\n"
-    
+
     # Convert text to bytes
     transcript_bytes = transcript_text.encode('utf-8')
-    
+
     return StreamingResponse(
         iter([transcript_bytes]),
         media_type="text/plain; charset=utf-8",

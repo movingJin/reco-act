@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import axios from 'axios';
+import { apiClient } from '../api/authApi';
 import '../styles/SummaryPanel.css';
 
 interface Paragraph {
@@ -39,7 +39,7 @@ function SummaryPanel({ meetingId }: SummaryPanelProps) {
 
   const loadSummary = async () => {
     try {
-      const response = await axios.get(`/api/summary/${meetingId}`);
+      const response = await apiClient.get(`/api/summary/${meetingId}`);
       setSummary(response.data);
       setSubjectText(response.data.subject || '');
       setNextStepsText(response.data.next_steps || []);
@@ -52,7 +52,7 @@ function SummaryPanel({ meetingId }: SummaryPanelProps) {
   const handleGenerateSummary = async () => {
     setIsLoading(true);
     try {
-      const response = await axios.post(`/api/summary/${meetingId}`);
+      const response = await apiClient.post(`/api/summary/${meetingId}`);
       setSummary(response.data);
       setSubjectText(response.data.subject || '');
       setNextStepsText(response.data.next_steps || []);
@@ -68,7 +68,7 @@ function SummaryPanel({ meetingId }: SummaryPanelProps) {
     if (!summary) return;
     setIsSaving(true);
     try {
-      const response = await axios.put(`/api/meetings/${meetingId}/subject`, {
+      const response = await apiClient.put(`/api/meetings/${meetingId}/subject`, {
         subject: subjectText,
       });
       setSummary({
@@ -88,7 +88,7 @@ function SummaryPanel({ meetingId }: SummaryPanelProps) {
     if (!summary) return;
     setIsSaving(true);
     try {
-      const response = await axios.put(
+      const response = await apiClient.put(
         `/api/summary/${meetingId}/next-steps`,
         {
           next_steps: nextStepsText,
@@ -111,7 +111,7 @@ function SummaryPanel({ meetingId }: SummaryPanelProps) {
 
     setIsSaving(true);
     try {
-      const response = await axios.put(
+      const response = await apiClient.put(
         `/api/summary/${meetingId}/paragraph/${paragraphId}`,
         {
           subject: editedParagraph.subject,
@@ -166,7 +166,7 @@ function SummaryPanel({ meetingId }: SummaryPanelProps) {
 
   const handleDownloadSummary = async () => {
     try {
-      const response = await axios.get(
+      const response = await apiClient.get(
         `/api/summary/${meetingId}/download`,
         { responseType: 'blob' }
       );

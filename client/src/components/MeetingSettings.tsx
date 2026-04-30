@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import axios from 'axios';
+import { apiClient } from '../api/authApi';
 import '../styles/MeetingSettings.css';
 
 interface Meeting {
@@ -44,13 +44,13 @@ function MeetingSettings({ meeting, onUpdate }: MeetingSettingsProps) {
     try {
       // Update title if changed
       if (title !== meeting.title) {
-        await axios.put(`/api/meetings/${meeting.id}/title`, {
+        await apiClient.put(`/api/meetings/${meeting.id}/title`, {
           title,
         });
       }
 
       // Update participants
-      await axios.post(`/api/meetings/${meeting.id}/settings`, {
+      await apiClient.post(`/api/meetings/${meeting.id}/settings`, {
         participants,
       });
       

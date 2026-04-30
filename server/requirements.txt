@@ -13,3 +13,9 @@ langgraph~=1.1.6
 urllib3~=2.6.3
 openai~=2.30.0
 langchain-openai~=1.1.12
+python-jose[cryptography]==3.3.0
+passlib==1.7.4
+bcrypt==4.0.1
+pydantic-settings==2.0.3
+email-validator==2.1.0
+redis==5.0.1

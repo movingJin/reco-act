@@ -2,7 +2,7 @@ from datetime import datetime
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any, Optional
-from database import SessionLocal, Meeting as DBMeeting, Transcript as DBTranscript, DomainKeywords as DBDomainKeywords
+from database import SessionLocal, Meeting as DBMeeting, Transcript as DBTranscript, DomainKeywords as DBDomainKeywords, User as DBUser
 from models.meeting import Meeting, TranscriptSegmentResponse
 
 
@@ -99,13 +99,18 @@ def save_meeting(meeting: Meeting) -> bool:
         db.close()
 
 
-def list_all_meetings() -> List[Meeting]:
-    """List all meetings from database without transcripts for faster initial load."""
+def list_all_meetings(user_id: str) -> List[Meeting]:
+    """List meetings owned by user_id without transcripts for faster initial load."""
     db = get_db()
     meetings = []
     try:
-        db_meetings = db.query(DBMeeting).order_by(DBMeeting.created_at.desc()).all()
-        
+        db_meetings = (
+            db.query(DBMeeting)
+            .filter(DBMeeting.user_id == user_id)
+            .order_by(DBMeeting.created_at.desc())
+            .all()
+        )
+
         for db_meeting in db_meetings:
             # Load meeting without transcripts for faster initial list load
             meetings.append(db_meeting_to_model(db_meeting, db_transcripts=None))
@@ -113,35 +118,44 @@ def list_all_meetings() -> List[Meeting]:
         print(f"Error listing meetings: {e}")
     finally:
         db.close()
-    
+
     return meetings
 
 
-def create_meeting(title: str, participants: Optional[List[str]] = None) -> Meeting:
-    """Create a new meeting in database."""
+def create_meeting(title: str, participants: Optional[List[str]] = None, user_id: str = None) -> Meeting:
+    """Create a new meeting in database. domain_id는 사용자의 기본 도메인을 상속한다."""
     db = get_db()
     try:
         meeting_id = f"m_{int(datetime.now().timestamp() * 1000)}"
-        
+
+        default_domain_id = None
+        if user_id:
+            user = db.query(DBUser).filter(DBUser.email == user_id).first()
+            if user:
+                default_domain_id = user.domain_id
+
         db_meeting = DBMeeting(
             id=meeting_id,
+            user_id=user_id,
             title=title,
             created_at=datetime.utcnow(),
-            participants=participants or [f"화자{i+1}" for i in range(2)]
+            participants=participants or [f"화자{i+1}" for i in range(2)],
+            domain_id=default_domain_id,
         )
-        
+
         db.add(db_meeting)
         db.commit()
-        
+
         meeting = Meeting(
             id=meeting_id,
             title=title,
             created_at=datetime.utcnow().isoformat() + "Z",
             participants=db_meeting.participants,
             transcript=[],
-            audio_files=[]
+            audio_files=[],
+            domain_id=default_domain_id,
         )
-        
+
         return meeting
     except Exception as e:
         print(f"Error creating meeting: {e}")

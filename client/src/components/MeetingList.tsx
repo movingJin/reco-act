@@ -1,5 +1,8 @@
 import { useState } from 'react';
-import axios from 'axios';
+import { Link, useNavigate } from 'react-router-dom';
+import { apiClient } from '../api/authApi';
+import { useAuth } from '../contexts/AuthContext';
+import DomainSettings from './DomainSettings';
 import '../styles/MeetingList.css';
 
 interface TranscriptSegment {
@@ -26,6 +29,7 @@ interface MeetingListProps {
   onCreateMeeting: (title: string) => void;
   onDeleteMeeting?: (meetingId: string) => void;
   onBeforeSelectMeeting?: () => Promise<boolean>;
+  onDomainsUpdate?: () => void;
 }
 
 function MeetingList({
@@ -35,18 +39,22 @@ function MeetingList({
   onCreateMeeting,
   onDeleteMeeting,
   onBeforeSelectMeeting,
+  onDomainsUpdate,
 }: MeetingListProps) {
   const [newTitle, setNewTitle] = useState('');
+  const [showDomainSettingsModal, setShowDomainSettingsModal] = useState(false);
+  const { logout } = useAuth();
+  const navigate = useNavigate();
 
   const handleDeleteMeeting = async (e: React.MouseEvent, meetingId: string) => {
     e.stopPropagation();
-    
+
     if (!window.confirm('정말로 이 회의를 삭제하시겠습니까? 모든 관련 데이터가 함께 삭제됩니다.')) {
       return;
     }
 
     try {
-      await axios.delete(`/api/meetings/${meetingId}`);
+      await apiClient.delete(`/api/meetings/${meetingId}`);
       if (onDeleteMeeting) {
         onDeleteMeeting(meetingId);
       }
@@ -61,6 +69,11 @@ function MeetingList({
       onCreateMeeting(newTitle);
       setNewTitle('');
     }
+  };
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
   };
 
   const formatDate = (dateString: string) => {
@@ -79,6 +92,25 @@ function MeetingList({
     <div className="meeting-list">
       <div className="list-header">
         <h2>회의 목록</h2>
+        <div className="global-actions">
+          <button
+            className="global-action-button"
+            onClick={() => setShowDomainSettingsModal(true)}
+            title="도메인 설정"
+          >
+            🏷️ 도메인 설정
+          </button>
+          <button
+            className="global-action-button logout-action"
+            onClick={handleLogout}
+            title="로그아웃"
+          >
+            로그아웃
+          </button>
+          <Link to="/profile" className="profile-button" title="프로필">
+            👤
+          </Link>
+        </div>
       </div>
 
       <div className="create-meeting">
@@ -127,6 +159,16 @@ function MeetingList({
           ))
         )}
       </div>
+
+      <DomainSettings
+        isOpen={showDomainSettingsModal}
+        onClose={() => setShowDomainSettingsModal(false)}
+        onUpdate={() => {
+          if (onDomainsUpdate) {
+            onDomainsUpdate();
+          }
+        }}
+      />
     </div>
   );
 }

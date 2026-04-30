@@ -22,7 +22,7 @@ app.add_middleware(
 )
 
 # 애플리케이션 시작 시 데이터베이스 테이블 초기화
-@api_router.on_event("startup")
+@app.on_event("startup")
 def startup_event():
     init_db()
 

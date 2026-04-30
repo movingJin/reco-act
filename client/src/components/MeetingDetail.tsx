@@ -1,9 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
-import axios from 'axios';
+import { apiClient } from '../api/authApi';
 import RecorderControls, { RecorderControlsHandle } from './RecorderControls';
 import TranscriptEditor from './TranscriptEditor';
 import MeetingSettings from './MeetingSettings';
-import DomainSettings from './DomainSettings';
 import SummaryPanel from './SummaryPanel';
 import '../styles/MeetingDetail.css';
 
@@ -36,12 +35,12 @@ interface MeetingDetailProps {
   onUpdate: () => void;
   onRequestMeetingChange?: (newMeeting: Meeting) => Promise<boolean>;
   onSetRecorderState?: (state: { isRecording: boolean; stopRecordingWithoutUpload: () => void }) => void;
+  domainsVersion?: number;
 }
 
-function MeetingDetail({ meeting, onUpdate, onSetRecorderState }: MeetingDetailProps) {
+function MeetingDetail({ meeting, onUpdate, onSetRecorderState, domainsVersion }: MeetingDetailProps) {
   const [transcript, setTranscript] = useState<TranscriptSegment[]>(meeting.transcript || []);
   const [showParticipantSettingsModal, setShowParticipantSettingsModal] = useState(false);
-  const [showDomainSettingsModal, setShowDomainSettingsModal] = useState(false);
   const [domains, setDomains] = useState<Domain[]>([]);
   const [selectedDomain, setSelectedDomain] = useState<number | null>(meeting.domain_id || null);
   const [isLoadingDomains, setIsLoadingDomains] = useState(false);
@@ -54,7 +53,7 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState }: MeetingDetailP
     // 회의가 변경되면 서버에서 transcript 로드
     const loadMeetingWithTranscript = async () => {
       try {
-        const response = await axios.get(`/api/meetings/${meeting.id}`);
+        const response = await apiClient.get(`/api/meetings/${meeting.id}`);
         setTranscript(response.data.transcript || []);
       } catch (error) {
         console.error('Failed to load meeting transcript:', error);
@@ -82,12 +81,12 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState }: MeetingDetailP
 
   useEffect(() => {
     loadDomains();
-  }, []);
+  }, [domainsVersion]);
 
   const loadDomains = async () => {
     setIsLoadingDomains(true);
     try {
-      const response = await axios.get<Domain[]>('/api/domains');
+      const response = await apiClient.get<Domain[]>('/api/domains');
       setDomains(response.data);
     } catch (error) {
       console.error('Failed to load domains:', error);
@@ -98,7 +97,7 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState }: MeetingDetailP
 
   const handleDomainChange = async (domainId: number | null) => {
     try {
-      await axios.put(`/api/meetings/${meeting.id}/domain`, null, {
+      await apiClient.put(`/api/meetings/${meeting.id}/domain`, null, {
         params: { domain_id: domainId }
       });
       setSelectedDomain(domainId);
@@ -111,7 +110,7 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState }: MeetingDetailP
 
   const handleDownloadAudio = async () => {
     try {
-      const response = await axios.get(
+      const response = await apiClient.get(
         `/api/meetings/${meeting.id}/download-audio`,
         { responseType: 'blob' }
       );
@@ -133,7 +132,7 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState }: MeetingDetailP
 
   const handleDownloadTranscript = async () => {
     try {
-      const response = await axios.get(
+      const response = await apiClient.get(
         `/api/meetings/${meeting.id}/download-transcript`,
         { responseType: 'blob' }
       );
@@ -160,7 +159,7 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState }: MeetingDetailP
   const handleSaveTranscript = async (updatedTranscript: TranscriptSegment[]) => {
     try {
       // Send full TranscriptSegmentResponse format (server will extract speaker_index)
-      await axios.post(`/api/meetings/${meeting.id}/transcript`, {
+      await apiClient.post(`/api/meetings/${meeting.id}/transcript`, {
         transcript: updatedTranscript,
       });
     } catch (error) {
@@ -181,7 +180,7 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState }: MeetingDetailP
       // 이렇게 하면 pending 상태부터 처리 중 메시지가 표시됨
       setIsProcessing(true);
 
-      const response = await axios.post(
+      const response = await apiClient.post(
         `/api/meetings/${meeting.id}/upload-audio`,
         formData,
         {
@@ -250,13 +249,6 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState }: MeetingDetailP
             title="참여자 설정"
           >
             👥 참여자 설정
-          </button>
-          <button
-            className="settings-button"
-            onClick={() => setShowDomainSettingsModal(true)}
-            title="도메인 관리"
-          >
-            🏷️ 도메인 설정
           </button>
         </div>
       </div>
@@ -370,15 +362,6 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState }: MeetingDetailP
         </div>
       )}
 
-      {/* Domain Settings Modal */}
-      <DomainSettings 
-        isOpen={showDomainSettingsModal}
-        onClose={() => setShowDomainSettingsModal(false)}
-        onUpdate={() => {
-          loadDomains();
-          onUpdate();
-        }}
-      />
     </div>
   );
 }
