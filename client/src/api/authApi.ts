@@ -1,11 +1,7 @@
 import axios from 'axios';
 
-const API_BASE_URL = 'http://localhost:8000';
-
-// API 인스턴스 생성
-const apiClient = axios.create({
-  baseURL: API_BASE_URL,
-});
+// API 인스턴스 생성 (현재 origin 기준 상대 경로 사용 → dev: Vite proxy, prod: nginx proxy 가 처리)
+const apiClient = axios.create();
 
 // 토큰을 Authorization 헤더에 자동 첨부
 apiClient.interceptors.request.use((config) => {

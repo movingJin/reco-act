@@ -1,7 +1,7 @@
 node_modules/
 .idea/
 .venv/
-.env
+*.env
 *.log
 *.wav
 *.pyc
