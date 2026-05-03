@@ -1,3 +1,5 @@
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from api.routers import api_router
@@ -5,13 +7,23 @@ from database import init_db
 
 app = FastAPI(title="Meeting Transcription API", version="1.0.0", max_request_size=100_000_000)  # 100MB
 
-# CORS 설정 (개발 환경)
+# CORS 설정
+# - 웹 개발: localhost:3000/5173
+# - 모바일(Capacitor): iOS는 capacitor://localhost, Android는 https://localhost (Capacitor 5+)
+# - 운영 웹: WEB_ORIGIN 환경변수로 도메인 주입
 cors_origins = [
     "http://localhost:3000",
     "http://localhost:5173",
     "http://127.0.0.1:3000",
     "http://127.0.0.1:5173",
+    "capacitor://localhost",
+    "https://localhost",
+    "http://localhost",
 ]
+
+prod_origin = os.environ.get("WEB_ORIGIN")
+if prod_origin:
+    cors_origins.append(prod_origin)
 
 app.add_middleware(
     CORSMiddleware,

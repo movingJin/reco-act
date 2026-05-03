@@ -1,7 +1,10 @@
+import tempfile
+
 from fastapi import APIRouter, HTTPException, UploadFile, File, Depends
 from fastapi.responses import FileResponse, StreamingResponse
 from pathlib import Path
 from datetime import datetime
+from pydub import AudioSegment
 from sqlalchemy.orm import Session
 
 from models.meeting import (
@@ -105,10 +108,19 @@ async def upload_audio(meeting_id: str, file: UploadFile = File(...), current_us
         # Create directory if it doesn't exist
         UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
-        # Save file
+        # 클라이언트가 보낸 파일을 그대로 저장하지 않고 항상 WAV로 정규화한다.
+        # 모바일(Capacitor) 클라이언트는 m4a/AAC로 녹음하므로 ffmpeg로 변환이 필요하고,
+        # 웹 클라이언트가 보낸 WAV도 동일 경로로 통과시켜 다운스트림(Clova STT)이
+        # 항상 WAV를 받도록 보장한다.
         content = await file.read()
-        with open(file_path, "wb") as f:
-            f.write(content)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=Path(file.filename or 'upload').suffix) as tmp:
+            tmp.write(content)
+            tmp_path = tmp.name
+        try:
+            audio = AudioSegment.from_file(tmp_path)
+            audio.export(str(file_path), format="wav")
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
 
         # Call Clova STT conversion
         try:
