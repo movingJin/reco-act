@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { apiClient } from '../api/authApi';
 import { useAuth } from '../contexts/AuthContext';
 import DomainSettings from './DomainSettings';
+import { confirmDialog } from '../utils/dialog';
 import '../styles/MeetingList.css';
 
 interface TranscriptSegment {
@@ -49,7 +50,7 @@ function MeetingList({
   const handleDeleteMeeting = async (e: React.MouseEvent, meetingId: string) => {
     e.stopPropagation();
 
-    if (!window.confirm('정말로 이 회의를 삭제하시겠습니까? 모든 관련 데이터가 함께 삭제됩니다.')) {
+    if (!(await confirmDialog('정말로 이 회의를 삭제하시겠습니까? 모든 관련 데이터가 함께 삭제됩니다.'))) {
       return;
     }
 
@@ -71,8 +72,11 @@ function MeetingList({
     }
   };
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    if (!(await confirmDialog('로그아웃 하시겠습니까?'))) {
+      return;
+    }
+    await logout();
     navigate('/login');
   };
 

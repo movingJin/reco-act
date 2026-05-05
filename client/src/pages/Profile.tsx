@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { apiClient } from '../api/authApi';
+import { useModalBackButton } from '../utils/backButton';
 import '../styles/Auth.css';
 
 interface Domain {
@@ -12,7 +13,7 @@ interface Domain {
 
 export const Profile: React.FC = () => {
   const navigate = useNavigate();
-  const { user, updateProfile, deleteAccount, logout } = useAuth();
+  const { user, updateProfile, deleteAccount } = useAuth();
   const [editMode, setEditMode] = useState(false);
   const [name, setName] = useState(user?.name || '');
   const [error, setError] = useState('');
@@ -28,6 +29,15 @@ export const Profile: React.FC = () => {
     user?.domain_id ?? null
   );
   const [isSavingDomain, setIsSavingDomain] = useState(false);
+
+  // 계정 삭제 모달 닫기 (입력 비번도 함께 초기화)
+  const closeDeleteModal = () => {
+    setShowDeleteModal(false);
+    setDeletePassword('');
+  };
+
+  // Android 백버튼으로 모달 닫기
+  useModalBackButton(showDeleteModal, closeDeleteModal);
 
   useEffect(() => {
     const loadDomains = async () => {
@@ -101,14 +111,12 @@ export const Profile: React.FC = () => {
 
     try {
       await deleteAccount(deletePassword);
-      logout();
       navigate('/login', { state: { message: '계정이 삭제되었습니다.' } });
     } catch (err: any) {
       setError(err.message || '계정 삭제 실패');
     } finally {
       setIsLoading(false);
-      setShowDeleteModal(false);
-      setDeletePassword('');
+      closeDeleteModal();
     }
   };
 
@@ -282,8 +290,7 @@ export const Profile: React.FC = () => {
                   type="button"
                   className="cancel-button"
                   onClick={() => {
-                    setShowDeleteModal(false);
-                    setDeletePassword('');
+                    closeDeleteModal();
                     setError('');
                   }}
                   disabled={isLoading}

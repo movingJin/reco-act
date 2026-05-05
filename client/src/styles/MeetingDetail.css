@@ -153,6 +153,26 @@
   height: 100%;
 }
 
+/* 모바일에서는 좌우 split 대신 세로로 stack */
+@media (max-width: 767px) {
+  .detail-container {
+    flex-direction: column;
+    height: auto;
+    overflow: visible;
+  }
+  .meeting-section,
+  .summary-section-wrapper {
+    flex: none;
+    height: auto;
+    border-right: none;
+    border-bottom: 1px solid #ddd;
+    overflow: visible;
+  }
+  .summary-section-wrapper {
+    border-bottom: none;
+  }
+}
+
 .detail-content {
   display: flex;
   flex-direction: column;

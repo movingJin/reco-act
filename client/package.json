@@ -6,10 +6,24 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "build:mobile": "vite build --mode mobile && cap sync",
+    "android": "vite build && cap sync android && cap open android",
+    "ios": "vite build && cap sync ios && cap open ios"
   },
   "dependencies": {
+    "@capacitor/android": "^7.6.2",
+    "@capacitor/app": "^7.1.2",
+    "@capacitor/cli": "^7.6.2",
+    "@capacitor/core": "^7.6.2",
+    "@capacitor/dialog": "^7.0.4",
+    "@capacitor/filesystem": "^7.1.8",
+    "@capacitor/ios": "^7.6.2",
+    "@capacitor/preferences": "^7.0.4",
+    "@capacitor/share": "^7.0.4",
+    "@capacitor/toast": "^7.0.4",
     "axios": "^1.6.2",
+    "capacitor-voice-recorder": "^7.0.6",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.30.3"

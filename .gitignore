@@ -5,3 +5,26 @@ node_modules/
 *.log
 *.wav
 *.pyc
+
+# Allow public client env file (mobile build URL — no secrets)
+!client/.env.mobile
+
+# Capacitor native build artifacts (commit ios/ and android/ source dirs themselves)
+client/ios/App/Pods/
+client/ios/App/build/
+client/ios/DerivedData/
+client/android/.gradle/
+client/android/app/build/
+client/android/build/
+client/android/local.properties
+client/android/.idea/
+
+# Capacitor build outputs
+client/dist/
+
+# TypeScript incremental build cache (tsc -b)
+*.tsbuildinfo
+
+# Vite config compiled artifacts (tsc -b emits these from vite.config.ts)
+client/vite.config.js
+client/vite.config.d.ts

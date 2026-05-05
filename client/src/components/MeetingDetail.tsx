@@ -4,6 +4,8 @@ import RecorderControls, { RecorderControlsHandle } from './RecorderControls';
 import TranscriptEditor from './TranscriptEditor';
 import MeetingSettings from './MeetingSettings';
 import SummaryPanel from './SummaryPanel';
+import { saveAndShare } from '../utils/download';
+import { useModalBackButton } from '../utils/backButton';
 import '../styles/MeetingDetail.css';
 
 interface TranscriptSegment {
@@ -48,6 +50,9 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState, domainsVersion }
   const [isUploading, setIsUploading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const recorderRef = useRef<RecorderControlsHandle>(null);
+
+  // Android 백버튼으로 참여자 설정 모달 닫기
+  useModalBackButton(showParticipantSettingsModal, () => setShowParticipantSettingsModal(false));
 
   useEffect(() => {
     // 회의가 변경되면 서버에서 transcript 로드
@@ -114,16 +119,7 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState, domainsVersion }
         `/api/meetings/${meeting.id}/download-audio`,
         { responseType: 'blob' }
       );
-      
-      // Create a blob URL and trigger download
-      const url = window.URL.createObjectURL(response.data);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `meeting-${meeting.id}.wav`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
+      await saveAndShare(response.data, `meeting-${meeting.id}.wav`);
     } catch (error) {
       console.error('Failed to download audio:', error);
       alert('녹취 파일 다운로드에 실패했습니다');
@@ -136,16 +132,7 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState, domainsVersion }
         `/api/meetings/${meeting.id}/download-transcript`,
         { responseType: 'blob' }
       );
-      
-      // Create a blob URL and trigger download
-      const url = window.URL.createObjectURL(response.data);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `transcript-${meeting.id}.txt`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
+      await saveAndShare(response.data, `transcript-${meeting.id}.txt`);
     } catch (error) {
       console.error('Failed to download transcript:', error);
       alert('대화 내용 다운로드에 실패했습니다');

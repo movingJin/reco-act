@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { apiClient } from '../api/authApi';
+import { saveAndShare } from '../utils/download';
 import '../styles/SummaryPanel.css';
 
 interface Paragraph {
@@ -170,16 +171,7 @@ function SummaryPanel({ meetingId }: SummaryPanelProps) {
         `/api/summary/${meetingId}/download`,
         { responseType: 'blob' }
       );
-      
-      // Create a blob URL and trigger download
-      const url = window.URL.createObjectURL(response.data);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `summary-${meetingId}.txt`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
+      await saveAndShare(response.data, `summary-${meetingId}.txt`);
     } catch (error) {
       console.error('Failed to download summary:', error);
       alert('요약 다운로드에 실패했습니다');

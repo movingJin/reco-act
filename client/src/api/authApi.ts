@@ -1,27 +1,35 @@
 import axios from 'axios';
+import { getAuthToken, clearAuth } from '../types/auth';
 
-// API 인스턴스 생성 (현재 origin 기준 상대 경로 사용 → dev: Vite proxy, prod: nginx proxy 가 처리)
-const apiClient = axios.create();
+// API base URL
+// - dev: 빈 문자열 → Vite proxy가 /api/ 처리
+// - web prod: 빈 문자열 → nginx가 /api/ 프록시
+// - mobile: 절대 URL (.env.mobile) → 모바일 앱에서 절대경로로 직접 호출
+const baseURL = import.meta.env.VITE_API_BASE_URL || '';
+
+const apiClient = axios.create({ baseURL });
 
 // 토큰을 Authorization 헤더에 자동 첨부
-apiClient.interceptors.request.use((config) => {
-  const token = localStorage.getItem('access_token');
+apiClient.interceptors.request.use(async (config) => {
+  const token = await getAuthToken();
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 });
 
-// 401 응답 시 저장된 토큰을 제거하고 로그인 페이지로 이동
+// 401 응답 시 인증 정리 + 외부에서 등록한 콜백 호출 (라우터 이동은 호출자가 처리)
+let onUnauthorized: () => void = () => {};
+export const setUnauthorizedHandler = (handler: () => void) => {
+  onUnauthorized = handler;
+};
+
 apiClient.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('user');
-      if (window.location.pathname !== '/login') {
-        window.location.href = '/login';
-      }
+      await clearAuth();
+      onUnauthorized();
     }
     return Promise.reject(error);
   }

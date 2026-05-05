@@ -1,0 +1,12 @@
+// Foojay toolchain resolver — Capacitor 7 플러그인이 Java 21을 요구하므로
+// Gradle이 호스트에 Java 21이 없을 때 자동으로 다운로드하도록 한다.
+// 호스트에 이미 Java 21이 있다면 자동 감지되며, 없을 때만 download가 트리거된다.
+plugins {
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '0.8.0'
+}
+
+include ':app'
+include ':capacitor-cordova-android-plugins'
+project(':capacitor-cordova-android-plugins').projectDir = new File('./capacitor-cordova-android-plugins/')
+
+apply from: 'capacitor.settings.gradle'

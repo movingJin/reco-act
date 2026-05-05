@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { apiClient } from '../api/authApi';
+import { confirmDialog } from '../utils/dialog';
+import { useModalBackButton } from '../utils/backButton';
 import '../styles/DomainSettings.css';
 
 interface Domain {
@@ -23,6 +25,9 @@ function DomainSettings({ isOpen, onClose, onUpdate }: DomainSettingsProps) {
   const [formData, setFormData] = useState<Omit<Domain, 'id'>>({ domain_name: '', keywords: [] });
   const [newKeyword, setNewKeyword] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+
+  // Android 백버튼으로 모달 닫기
+  useModalBackButton(isOpen, onClose);
 
   useEffect(() => {
     if (isOpen) {
@@ -135,7 +140,7 @@ function DomainSettings({ isOpen, onClose, onUpdate }: DomainSettingsProps) {
   const handleDelete = async () => {
     if (!selectedDomain) return;
 
-    if (!window.confirm(`'${selectedDomain.domain_name}' 도메인을 삭제하시겠습니까?`)) {
+    if (!(await confirmDialog(`'${selectedDomain.domain_name}' 도메인을 삭제하시겠습니까?`))) {
       return;
     }
 

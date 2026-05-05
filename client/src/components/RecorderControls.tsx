@@ -1,4 +1,7 @@
 import { useRef, useState, forwardRef, useImperativeHandle } from 'react';
+import { Capacitor, registerPlugin } from '@capacitor/core';
+import { VoiceRecorder } from 'capacitor-voice-recorder';
+import { confirmDialog } from '../utils/dialog';
 import '../styles/RecorderControls.css';
 
 interface RecorderControlsProps {
@@ -10,6 +13,17 @@ export interface RecorderControlsHandle {
   stopRecordingWithoutUpload: () => void;
 }
 
+// Android foreground service bridge — JS에서 녹음 시작 시 마이크 service를 기동해
+// 화면이 꺼지거나 앱이 백그라운드로 가도 프로세스가 죽지 않도록 한다.
+interface RecordingServicePlugin {
+  start: () => Promise<void>;
+  stop: () => Promise<void>;
+}
+const RecordingService = registerPlugin<RecordingServicePlugin>('RecordingService');
+
+const isNative = Capacitor.isNativePlatform();
+const platform = Capacitor.getPlatform();
+
 const RecorderControls = forwardRef<RecorderControlsHandle, RecorderControlsProps>(
   ({ onRecordingComplete }, ref) => {
   const [isRecording, setIsRecording] = useState(false);
@@ -20,96 +34,157 @@ const RecorderControls = forwardRef<RecorderControlsHandle, RecorderControlsProp
   const timerRef = useRef<number | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
+  const startTimer = () => {
+    timerRef.current = window.setInterval(() => {
+      setRecordingTime((prev) => prev + 1);
+    }, 1000);
+  };
+
+  const stopTimer = () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  };
+
   const startRecording = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
-
-      const mediaRecorder = new MediaRecorder(stream);
-      mediaRecorderRef.current = mediaRecorder;
-      audioChunksRef.current = [];
-
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
+      if (isNative) {
+        const perm = await VoiceRecorder.requestAudioRecordingPermission();
+        if (!perm.value) {
+          alert('마이크 접근 권한이 필요합니다');
+          return;
         }
-      };
+        if (platform === 'android') {
+          await RecordingService.start();
+        }
+        await VoiceRecorder.startRecording();
+      } else {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        streamRef.current = stream;
 
-      mediaRecorder.start();
+        const mediaRecorder = new MediaRecorder(stream);
+        mediaRecorderRef.current = mediaRecorder;
+        audioChunksRef.current = [];
+
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            audioChunksRef.current.push(event.data);
+          }
+        };
+
+        mediaRecorder.start();
+      }
+
       setIsRecording(true);
       setIsPaused(false);
       setRecordingTime(0);
-
-      timerRef.current = setInterval(() => {
-        setRecordingTime((prev) => prev + 1);
-      }, 1000);
+      startTimer();
     } catch (error) {
       console.error('Failed to start recording:', error);
       alert('마이크 접근 권한이 필요합니다');
     }
   };
 
-  const pauseRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.pause();
+  const pauseRecording = async () => {
+    if (!isRecording) return;
+    try {
+      if (isNative) {
+        await VoiceRecorder.pauseRecording();
+      } else if (mediaRecorderRef.current) {
+        mediaRecorderRef.current.pause();
+      }
       setIsPaused(true);
-      if (timerRef.current) clearInterval(timerRef.current);
+      stopTimer();
+    } catch (error) {
+      console.error('Failed to pause recording:', error);
     }
   };
 
-  const resumeRecording = () => {
-    if (mediaRecorderRef.current && isPaused) {
-      mediaRecorderRef.current.resume();
+  const resumeRecording = async () => {
+    if (!isPaused) return;
+    try {
+      if (isNative) {
+        await VoiceRecorder.resumeRecording();
+      } else if (mediaRecorderRef.current) {
+        mediaRecorderRef.current.resume();
+      }
       setIsPaused(false);
-      timerRef.current = setInterval(() => {
-        setRecordingTime((prev) => prev + 1);
-      }, 1000);
+      startTimer();
+    } catch (error) {
+      console.error('Failed to resume recording:', error);
     }
   };
 
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
-      if (timerRef.current) clearInterval(timerRef.current);
+  const finalizeRecording = (blob: Blob | null) => {
+    setIsRecording(false);
+    setIsPaused(false);
+    setRecordingTime(0);
+    if (blob) onRecordingComplete(blob);
+  };
 
-      mediaRecorderRef.current.onstop = () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
-        
-        // 업로드 여부를 묻는 확인 대화
-        const shouldUpload = window.confirm('녹취된 내용을 업로드 하시겠습니까?');
-        
-        if (shouldUpload) {
-          onRecordingComplete(audioBlob);
+  const stopRecording = async () => {
+    if (!isRecording) return;
+    stopTimer();
+
+    try {
+      if (isNative) {
+        const result = await VoiceRecorder.stopRecording();
+        if (platform === 'android') {
+          await RecordingService.stop().catch(() => {});
         }
-        
-        setIsRecording(false);
-        setIsPaused(false);
-        setRecordingTime(0);
-      };
-
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((track) => track.stop());
+        const shouldUpload = await confirmDialog('녹취된 내용을 업로드 하시겠습니까?');
+        if (shouldUpload && result.value?.recordDataBase64) {
+          const blob = base64ToBlob(
+            result.value.recordDataBase64,
+            result.value.mimeType || 'audio/aac'
+          );
+          finalizeRecording(blob);
+        } else {
+          finalizeRecording(null);
+        }
+      } else if (mediaRecorderRef.current) {
+        const recorder = mediaRecorderRef.current;
+        recorder.onstop = async () => {
+          const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
+          const shouldUpload = await confirmDialog('녹취된 내용을 업로드 하시겠습니까?');
+          finalizeRecording(shouldUpload ? audioBlob : null);
+        };
+        recorder.stop();
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach((track) => track.stop());
+          streamRef.current = null;
+        }
       }
+    } catch (error) {
+      console.error('Failed to stop recording:', error);
+      finalizeRecording(null);
     }
   };
 
-  const stopRecordingWithoutUpload = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
-      if (timerRef.current) clearInterval(timerRef.current);
+  const stopRecordingWithoutUpload = async () => {
+    if (!isRecording) return;
+    stopTimer();
 
-      // 녹취 데이터를 버리고 업로드하지 않음
-      audioChunksRef.current = [];
-
-      mediaRecorderRef.current.onstop = () => {
-        setIsRecording(false);
-        setIsPaused(false);
-        setRecordingTime(0);
-      };
-
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((track) => track.stop());
+    try {
+      if (isNative) {
+        await VoiceRecorder.stopRecording().catch(() => {});
+        if (platform === 'android') {
+          await RecordingService.stop().catch(() => {});
+        }
+      } else if (mediaRecorderRef.current) {
+        audioChunksRef.current = [];
+        mediaRecorderRef.current.onstop = () => {};
+        mediaRecorderRef.current.stop();
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach((track) => track.stop());
+          streamRef.current = null;
+        }
       }
+    } finally {
+      setIsRecording(false);
+      setIsPaused(false);
+      setRecordingTime(0);
     }
   };
 
@@ -117,7 +192,6 @@ const RecorderControls = forwardRef<RecorderControlsHandle, RecorderControlsProp
     isRecording,
     stopRecordingWithoutUpload,
   }));
-
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -163,5 +237,15 @@ const RecorderControls = forwardRef<RecorderControlsHandle, RecorderControlsProp
 );
 
 RecorderControls.displayName = 'RecorderControls';
+
+// base64 문자열을 Blob으로 변환 (네이티브 녹음 결과 업로드용)
+function base64ToBlob(base64: string, mimeType: string): Blob {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return new Blob([bytes], { type: mimeType });
+}
 
 export default RecorderControls;
