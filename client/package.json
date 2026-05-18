@@ -8,7 +8,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "build:mobile": "vite build --mode mobile && cap sync",
-    "android": "vite build && cap sync android && cap open android",
+    "android": "vite build --mode mobile && cap sync android && cap open android",
     "ios": "vite build && cap sync ios && cap open ios"
   },
   "dependencies": {
