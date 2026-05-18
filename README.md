@@ -110,14 +110,11 @@ reco-act/
 cd server
 
 # 가상환경 생성 (선택사항이지만 권장)
-python3 -m venv venv
-source venv/bin/activate
+python3 -m venv .venv
+source .venv/bin/activate
 
 # 의존성 설치
 pip install -r requirements.txt
-
-# 테스트 데이터 초기화 (선택사항)
-python init_test_data.py
 
 # 서버 실행
 python -m main

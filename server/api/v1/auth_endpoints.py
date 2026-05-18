@@ -1,5 +1,5 @@
 """인증/사용자 관리 API 엔드포인트."""
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from database import User, get_db
@@ -8,14 +8,17 @@ from models.auth import (
     EmailRequest,
     LoginRequest,
     LoginResponse,
+    LogoutRequest,
     PasswordResetConfirmRequest,
+    RefreshTokenRequest,
+    RefreshTokenResponse,
     SignupRequest,
     UpdateProfileRequest,
     UserResponse,
     VerificationRequest,
 )
 from services import auth_service
-from utils.auth import get_current_user
+from utils.auth import get_current_user, revoke_refresh_token, rotate_refresh_token
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -60,12 +63,13 @@ async def signup(request: SignupRequest, db: Session = Depends(get_db)):
     }
 
 
-@router.post("/login")
+@router.post("/login", response_model=LoginResponse)
 async def login(request: LoginRequest, db: Session = Depends(get_db)):
-    """로그인합니다."""
-    user, access_token = auth_service.login(request.email, request.password, db)
+    """로그인합니다. access/refresh token 쌍을 발급합니다."""
+    user, access_token, refresh_token = auth_service.login(request.email, request.password, db)
     return LoginResponse(
         access_token=access_token,
+        refresh_token=refresh_token,
         user={
             "email": user.email,
             "name": user.name,
@@ -74,9 +78,24 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
     )
 
 
+@router.post("/refresh", response_model=RefreshTokenResponse)
+async def refresh(request: RefreshTokenRequest):
+    """refresh token으로 새 access/refresh token 쌍을 발급합니다(회전)."""
+    rotated = rotate_refresh_token(request.refresh_token)
+    if rotated is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="유효하지 않은 refresh token입니다",
+        )
+    new_access, new_refresh = rotated
+    return RefreshTokenResponse(access_token=new_access, refresh_token=new_refresh)
+
+
 @router.post("/logout")
-async def logout():
-    """로그아웃합니다."""
+async def logout(request: LogoutRequest):
+    """로그아웃합니다. 전달된 refresh token이 있으면 Redis에서 무효화합니다."""
+    if request.refresh_token:
+        revoke_refresh_token(request.refresh_token)
     return {"message": "로그아웃되었습니다"}
 
 

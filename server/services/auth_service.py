@@ -15,8 +15,13 @@ from database import (
     Transcript,
     User,
 )
-from utils import verification_store
-from utils.auth import create_access_token, hash_password, verify_password
+from utils import refresh_token_store, verification_store
+from utils.auth import (
+    create_access_token,
+    create_refresh_token,
+    hash_password,
+    verify_password,
+)
 from utils.email import generate_verification_code, send_verification_email
 
 VERIFICATION_CODE_TTL = timedelta(minutes=10)
@@ -115,8 +120,8 @@ def signup(email: str, name: str, password: str, code: str, db: Session) -> User
     return user
 
 
-def login(email: str, password: str, db: Session) -> Tuple[User, str]:
-    """자격증명을 검증하고 (사용자, access_token)을 반환한다."""
+def login(email: str, password: str, db: Session) -> Tuple[User, str, str]:
+    """자격증명을 검증하고 (사용자, access_token, refresh_token)을 반환한다."""
     user = db.query(User).filter(User.email == email).first()
 
     if not user or not verify_password(password, user.password_hash):
@@ -132,7 +137,8 @@ def login(email: str, password: str, db: Session) -> Tuple[User, str]:
         )
 
     access_token = create_access_token(user.email)
-    return user, access_token
+    refresh_token = create_refresh_token(user.email)
+    return user, access_token, refresh_token
 
 
 # ==================== Profile ====================
@@ -211,6 +217,8 @@ def confirm_password_reset(
     db.commit()
 
     verification_store.delete_code(email)
+    # 비밀번호가 바뀌었으므로 기존 세션(refresh token)을 모두 무효화
+    refresh_token_store.delete_all_for_user(email)
 
 
 # ==================== Account Deletion ====================
@@ -240,6 +248,7 @@ def delete_user_account(user: User, password: str, db: Session) -> None:
     db.commit()
 
     verification_store.delete_code(user_email)
+    refresh_token_store.delete_all_for_user(user_email)
 
     # DB 커밋 성공 후 디스크의 오디오 파일 정리 (실패해도 계정 삭제는 유효)
     for path_str in audio_file_paths:
