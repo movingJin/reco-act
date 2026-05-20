@@ -6,7 +6,7 @@ Return Zero STT를 대체하는 Clova STT 구현
 import json
 import os
 import requests
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Tuple
 from dotenv import load_dotenv
 from models.meeting import TranscriptSegment
 
@@ -40,7 +40,7 @@ class ClovaSpeechClient:
         file_path: str,
         language: str = "ko-KR",
         domain_keywords: Optional[List[str]] = None,
-    ) -> List[TranscriptSegment]:
+    ) -> Tuple[List[TranscriptSegment], List[str]]:
         """
         음성 파일을 텍스트로 변환
 
@@ -50,7 +50,9 @@ class ClovaSpeechClient:
             domain_keywords: 도메인 키워드 리스트 (boostings로 사용)
 
         Returns:
-            TranscriptSegment 리스트
+            (TranscriptSegment 리스트, 화자 이름 리스트). 화자 이름은 Clova가
+            반환한 speakers[].label(1부터 시작) 오름차순으로 정렬되어 있으며,
+            speaker_index(0-based)로 그대로 인덱싱할 수 있다.
         """
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"Audio file not found: {file_path}")
@@ -96,12 +98,28 @@ class ClovaSpeechClient:
                     f"Clova API Error: {result.get('message', 'Unknown error')}"
                 )
 
-            # 응답을 TranscriptSegment로 변환
+            # 응답을 TranscriptSegment 및 화자 이름 리스트로 변환
             segments = self._parse_clova_response(result)
-            return segments
+            speaker_names = self._parse_clova_speakers(result)
+            return segments, speaker_names
 
         except requests.exceptions.RequestException as e:
             raise RuntimeError(f"Clova API Request Error: {str(e)}")
+
+    def _parse_clova_speakers(self, response: Dict[str, Any]) -> List[str]:
+        """Clova 응답의 speakers를 label(1-based) 오름차순 이름 리스트로 변환."""
+        speakers_data = response.get("speakers") or []
+        parsed: List[Tuple[int, str]] = []
+        for spk in speakers_data:
+            try:
+                label = int(spk.get("label"))
+            except (TypeError, ValueError):
+                continue
+            name = spk.get("name") or f"화자{label}"
+            parsed.append((label, name))
+
+        parsed.sort(key=lambda x: x[0])
+        return [name for _, name in parsed]
 
     def _parse_clova_response(self, response: Dict[str, Any]) -> List[TranscriptSegment]:
         """
@@ -152,7 +170,7 @@ def convert(
     file_path: str,
     language: str = "ko-KR",
     domain_keywords: Optional[List[str]] = None,
-) -> List[TranscriptSegment]:
+) -> Tuple[List[TranscriptSegment], List[str]]:
     """
     편의 함수: 파일을 바로 변환
 
@@ -162,7 +180,7 @@ def convert(
         domain_keywords: 도메인 키워드 리스트
 
     Returns:
-        TranscriptSegment 리스트
+        (TranscriptSegment 리스트, 화자 이름 리스트)
     """
     client = ClovaSpeechClient()
     return client.convert_file_to_transcript(

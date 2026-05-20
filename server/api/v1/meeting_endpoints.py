@@ -138,7 +138,7 @@ async def upload_audio(meeting_id: str, file: UploadFile = File(...), current_us
                 finally:
                     db_local.close()
 
-            segments = clova_convert(
+            segments, speaker_names = clova_convert(
                 file_path=str(file_path),
                 language="ko-KR",
                 domain_keywords=domain_keywords
@@ -150,14 +150,20 @@ async def upload_audio(meeting_id: str, file: UploadFile = File(...), current_us
                 detail=f"STT conversion failed: {str(e)}"
             )
 
+        # Clova가 인식한 화자 수에 맞춰 미팅 참가자를 갱신한다.
+        # speaker_names는 label(1-based) 오름차순이므로 speaker_index(0-based)와 1:1 매칭된다.
+        if speaker_names:
+            updated = update_meeting_settings(meeting_id, speaker_names)
+            if updated:
+                meeting = updated
+
         # segments는 이미 TranscriptSegment 리스트 형식
         # Convert TranscriptSegment to TranscriptSegmentResponse for API response
         response_segments = []
         for seg in segments:
-            speaker_index = seg.speaker_index % len(meeting.participants)  # 안전하게 인덱스 계산
-            speaker_name = meeting.participants[speaker_index]
+            speaker_name = meeting.participants[seg.speaker_index]
             response_segments.append(TranscriptSegmentResponse(
-                speaker_index=speaker_index,
+                speaker_index=seg.speaker_index,
                 speaker_name=speaker_name,
                 text=seg.text,
                 start=seg.start,
