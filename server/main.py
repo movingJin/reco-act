@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from api.routers import api_router
 from database import init_db
 
-app = FastAPI(title="Meeting Transcription API", version="1.0.0", max_request_size=200_000_000)  # 200MB
+app = FastAPI(title="Meeting Transcription API", version="1.0.0", max_request_size=500_000_000)  # 500MB (2h 녹음까지 여유)
 
 # CORS 설정
 # - 웹 개발: localhost:3000/5173

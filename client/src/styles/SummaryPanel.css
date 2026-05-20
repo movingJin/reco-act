@@ -408,3 +408,44 @@
 .paragraphs-section::-webkit-scrollbar-thumb:hover {
   background: #999;
 }
+
+/* 모바일: 헤더의 제목과 버튼이 좁은 화면에서 겹치지 않도록 줄바꿈 */
+@media (max-width: 767px) {
+  .summary-panel {
+    border-left: none;
+  }
+
+  .summary-header {
+    padding: 14px 16px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .summary-header h2 {
+    font-size: 18px;
+  }
+
+  .summary-buttons {
+    flex-wrap: wrap;
+    gap: 8px;
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .download-summary-btn,
+  .generate-summary-btn {
+    flex: 1 1 calc(50% - 4px);
+    padding: 8px 10px;
+    font-size: 13px;
+    text-align: center;
+  }
+
+  .summary-content {
+    padding: 14px;
+    gap: 14px;
+  }
+
+  .summary-section {
+    padding: 12px;
+  }
+}

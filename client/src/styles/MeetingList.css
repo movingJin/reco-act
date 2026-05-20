@@ -193,3 +193,32 @@
   color: #999;
   font-size: 14px;
 }
+
+@media (max-width: 767px) {
+  .list-header {
+    padding: 12px 14px;
+  }
+
+  .list-header h2 {
+    font-size: 17px;
+  }
+
+  .global-actions {
+    gap: 4px;
+  }
+
+  .global-action-button {
+    padding: 6px 8px;
+    font-size: 12px;
+  }
+
+  .profile-button {
+    width: 34px;
+    height: 34px;
+    font-size: 18px;
+  }
+
+  .create-meeting {
+    padding: 10px 12px;
+  }
+}

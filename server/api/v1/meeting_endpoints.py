@@ -112,9 +112,11 @@ async def upload_audio(meeting_id: str, file: UploadFile = File(...), current_us
         # 모바일(Capacitor) 클라이언트는 m4a/AAC로 녹음하므로 ffmpeg로 변환이 필요하고,
         # 웹 클라이언트가 보낸 WAV도 동일 경로로 통과시켜 다운스트림(Clova STT)이
         # 항상 WAV를 받도록 보장한다.
-        content = await file.read()
+        # 1시간+ 녹음은 수백 MB가 될 수 있으므로 전체 파일을 메모리에 올리지 않고
+        # 1MB 청크로 임시 파일에 스트리밍 저장한다.
         with tempfile.NamedTemporaryFile(delete=False, suffix=Path(file.filename or 'upload').suffix) as tmp:
-            tmp.write(content)
+            while chunk := await file.read(1024 * 1024):
+                tmp.write(chunk)
             tmp_path = tmp.name
         try:
             audio = AudioSegment.from_file(tmp_path)

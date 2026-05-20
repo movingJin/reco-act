@@ -86,7 +86,7 @@ class ClovaSpeechClient:
                     f"{self.invoke_url}/recognizer/upload",
                     headers=headers,
                     files=files,
-                    timeout=300,  # 5분 타임아웃
+                    timeout=1800,  # 30분 타임아웃 (1h+ 오디오는 Clova 처리에 10분 이상 걸릴 수 있음)
                 )
 
             response.raise_for_status()

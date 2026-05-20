@@ -1,4 +1,4 @@
-import { useRef, useState, forwardRef, useImperativeHandle } from 'react';
+import { useRef, useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { VoiceRecorder } from 'capacitor-voice-recorder';
 import { confirmDialog } from '../utils/dialog';
@@ -33,18 +33,39 @@ const RecorderControls = forwardRef<RecorderControlsHandle, RecorderControlsProp
   const audioChunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<number | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  // wall-clock 기반 타이머: 화면이 꺼져 setInterval이 throttle돼도
+  // 콜백이 실행되는 시점에 (Date.now() - startedAt) 으로 실제 경과시간을 계산한다.
+  const segmentStartRef = useRef<number | null>(null);
+  const accumulatedMsRef = useRef<number>(0);
+
+  const computeElapsedSeconds = () => {
+    const running = segmentStartRef.current != null ? Date.now() - segmentStartRef.current : 0;
+    return Math.floor((accumulatedMsRef.current + running) / 1000);
+  };
 
   const startTimer = () => {
+    segmentStartRef.current = Date.now();
     timerRef.current = window.setInterval(() => {
-      setRecordingTime((prev) => prev + 1);
+      setRecordingTime(computeElapsedSeconds());
     }, 1000);
   };
 
   const stopTimer = () => {
+    if (segmentStartRef.current != null) {
+      accumulatedMsRef.current += Date.now() - segmentStartRef.current;
+      segmentStartRef.current = null;
+    }
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
+    setRecordingTime(Math.floor(accumulatedMsRef.current / 1000));
+  };
+
+  const resetTimer = () => {
+    accumulatedMsRef.current = 0;
+    segmentStartRef.current = null;
+    setRecordingTime(0);
   };
 
   const startRecording = async () => {
@@ -78,7 +99,7 @@ const RecorderControls = forwardRef<RecorderControlsHandle, RecorderControlsProp
 
       setIsRecording(true);
       setIsPaused(false);
-      setRecordingTime(0);
+      resetTimer();
       startTimer();
     } catch (error) {
       console.error('Failed to start recording:', error);
@@ -119,7 +140,7 @@ const RecorderControls = forwardRef<RecorderControlsHandle, RecorderControlsProp
   const finalizeRecording = (blob: Blob | null) => {
     setIsRecording(false);
     setIsPaused(false);
-    setRecordingTime(0);
+    resetTimer();
     if (blob) onRecordingComplete(blob);
   };
 
@@ -192,6 +213,21 @@ const RecorderControls = forwardRef<RecorderControlsHandle, RecorderControlsProp
     isRecording,
     stopRecordingWithoutUpload,
   }));
+
+  // 전원 버튼으로 화면을 끄면 Android WebView가 setInterval을 throttle/정지시킨다.
+  // 화면이 다시 켜졌을 때 wall-clock 기반으로 표시 시간을 즉시 보정한다.
+  useEffect(() => {
+    if (!isRecording || isPaused) return;
+    const sync = () => setRecordingTime(computeElapsedSeconds());
+    document.addEventListener('visibilitychange', sync);
+    window.addEventListener('focus', sync);
+    window.addEventListener('pageshow', sync);
+    return () => {
+      document.removeEventListener('visibilitychange', sync);
+      window.removeEventListener('focus', sync);
+      window.removeEventListener('pageshow', sync);
+    };
+  }, [isRecording, isPaused]);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
