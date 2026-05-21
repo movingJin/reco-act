@@ -53,7 +53,7 @@ jobs:
         username: ${{secrets.PROD_USERNAME}}
         key: ${{secrets.PROD_PRIVATE_KEY}}
         port: ${{secrets.PROD_PORT}}
-        command_timeout: 30m
+        command_timeout: 1h
         script: |
           cd ${{ format('{0}/reco-act', secrets.SERVICE_ROOT) }}
           PATH="/var/packages/ContainerManager/target/usr/bin/:$PATH"

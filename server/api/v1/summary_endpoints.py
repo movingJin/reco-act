@@ -17,6 +17,7 @@ from services.summary_service import (
     update_next_steps,
     generate_summary_text,
 )
+from services.meeting_service import load_meeting
 
 router = APIRouter()
 
@@ -80,9 +81,11 @@ async def download_summary(meeting_id: str, current_user: User = Depends(get_cur
     summary = load_summary(meeting_id)
     if not summary:
         raise HTTPException(status_code=404, detail="Summary not found")
-    
+
+    meeting = load_meeting(meeting_id)
+
     # Generate summary text
-    summary_text = generate_summary_text(summary)
+    summary_text = generate_summary_text(summary, meeting)
     
     # Convert text to bytes
     summary_bytes = summary_text.encode('utf-8')

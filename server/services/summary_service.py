@@ -182,15 +182,21 @@ def format_time(ms: int) -> str:
     return f"{hours}:{str(minutes).zfill(2)}:{str(seconds).zfill(2)}"
 
 
-def generate_summary_text(summary: SummaryResponse) -> str:
+def generate_summary_text(summary: SummaryResponse, meeting=None) -> str:
     """Generate formatted summary text for download."""
     summary_text = ""
-    
+
     # Add header
-    summary_text += "=" * 60 + "\n"
-    summary_text += "회의 요약\n"
-    summary_text += "=" * 60 + "\n\n"
-    
+    if meeting is not None:
+        summary_text += f"회의록: {meeting.title}\n"
+        summary_text += f"생성일: {meeting.created_at}\n"
+        summary_text += f"참석자: {', '.join(meeting.participants)}\n"
+        summary_text += "=" * 60 + "\n\n"
+    else:
+        summary_text += "=" * 60 + "\n"
+        summary_text += "회의 요약\n"
+        summary_text += "=" * 60 + "\n\n"
+
     # Add subject section
     summary_text += "[요약]\n"
     summary_text += "-" * 60 + "\n"
