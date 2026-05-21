@@ -115,7 +115,7 @@ class ClovaSpeechClient:
                 label = int(spk.get("label"))
             except (TypeError, ValueError):
                 continue
-            name = f"화자{spk.get("name")}" or f"화자{label}"
+            name = f"화자{spk.get('name')}" or f"화자{label}"
             parsed.append((label, name))
 
         parsed.sort(key=lambda x: x[0])
