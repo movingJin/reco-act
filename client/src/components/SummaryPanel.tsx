@@ -26,6 +26,7 @@ function SummaryPanel({ meetingId }: SummaryPanelProps) {
   const [summary, setSummary] = useState<SummaryData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
   const [editingSubject, setEditingSubject] = useState(false);
   const [editingNextSteps, setEditingNextSteps] = useState(false);
   const [editingParagraph, setEditingParagraph] = useState<number | null>(null);
@@ -165,6 +166,20 @@ function SummaryPanel({ meetingId }: SummaryPanelProps) {
     });
   };
 
+  const handleSendEmail = async () => {
+    setIsSendingEmail(true);
+    try {
+      const response = await apiClient.post(`/api/summary/${meetingId}/email`);
+      const email = response.data?.email;
+      alert(email ? `요약본이 ${email}로 전송되었습니다` : '요약본이 이메일로 전송되었습니다');
+    } catch (error) {
+      console.error('Failed to send summary email:', error);
+      alert('요약 이메일 전송에 실패했습니다');
+    } finally {
+      setIsSendingEmail(false);
+    }
+  };
+
   const handleDownloadSummary = async () => {
     try {
       const response = await apiClient.get(
@@ -212,14 +227,29 @@ function SummaryPanel({ meetingId }: SummaryPanelProps) {
       <div className="summary-header">
         <h2>AI 요약</h2>
         <div className="summary-buttons">
-          <button
-            className="download-summary-btn"
-            onClick={handleDownloadSummary}
-            disabled={!summary || (summary.paragraphs.length === 0 && !summary.subject && summary.next_steps.length === 0)}
-            title={summary && (summary.paragraphs.length > 0 || summary.subject || summary.next_steps.length > 0) ? "요약 내용을 텍스트로 다운로드" : "먼저 AI 요약을 생성해주세요"}
-          >
-            🔽 요약 다운로드
-          </button>
+          {(() => {
+            const hasSummaryContent = !!summary && (summary.paragraphs.length > 0 || !!summary.subject || summary.next_steps.length > 0);
+            return (
+              <>
+                <button
+                  className="email-summary-btn"
+                  onClick={handleSendEmail}
+                  disabled={!hasSummaryContent || isSendingEmail}
+                  title={hasSummaryContent ? "가입한 이메일로 요약본 전송" : "먼저 AI 요약을 생성해주세요"}
+                >
+                  {isSendingEmail ? '전송 중...' : '📧 이메일 전송'}
+                </button>
+                <button
+                  className="download-summary-btn"
+                  onClick={handleDownloadSummary}
+                  disabled={!hasSummaryContent}
+                  title={hasSummaryContent ? "요약 내용을 텍스트로 다운로드" : "먼저 AI 요약을 생성해주세요"}
+                >
+                  🔽 요약 다운로드
+                </button>
+              </>
+            );
+          })()}
           <button
             className="generate-summary-btn"
             onClick={handleGenerateSummary}

@@ -4,6 +4,8 @@ import secrets
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email import encoders
 
 from dotenv import load_dotenv
 
@@ -58,4 +60,56 @@ def send_verification_email(recipient_email: str, code: str) -> bool:
         return True
     except Exception as e:
         print(f"Error sending email: {e}")
+        return False
+
+
+def send_summary_email(
+    recipient_email: str,
+    meeting_title: str,
+    summary_text: str,
+    attachment_filename: str,
+) -> bool:
+    """AI 요약본을 텍스트 파일 첨부로 사용자에게 전송합니다."""
+    try:
+        subject = f"[reco-act] 회의 요약: {meeting_title}"
+
+        html_body = f"""
+        <html>
+            <body style="font-family: Arial, sans-serif; background-color: #f5f5f5; padding: 20px;">
+                <div style="max-width: 600px; margin: 0 auto; background-color: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                    <h2 style="color: #333; margin-bottom: 20px;">AI 회의 요약</h2>
+                    <p style="color: #666; margin-bottom: 20px;">
+                        요청하신 회의 <strong>"{meeting_title}"</strong>의 AI 요약본을 첨부파일로 전송드립니다.
+                    </p>
+                    <p style="color: #999; font-size: 12px; margin-top: 20px;">
+                        본 메일은 reco-act에서 자동 발송되었습니다.
+                    </p>
+                </div>
+            </body>
+        </html>
+        """
+
+        message = MIMEMultipart()
+        message["Subject"] = subject
+        message["From"] = SENDER_EMAIL
+        message["To"] = recipient_email
+
+        message.attach(MIMEText(html_body, "html"))
+
+        attachment = MIMEBase("text", "plain", charset="utf-8")
+        attachment.set_payload(summary_text.encode("utf-8"))
+        encoders.encode_base64(attachment)
+        attachment.add_header(
+            "Content-Disposition",
+            f'attachment; filename="{attachment_filename}"',
+        )
+        message.attach(attachment)
+
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(SENDER_EMAIL, SENDER_PASSWORD)
+            server.sendmail(SENDER_EMAIL, recipient_email, message.as_string())
+
+        return True
+    except Exception as e:
+        print(f"Error sending summary email: {e}")
         return False

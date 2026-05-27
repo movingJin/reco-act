@@ -18,6 +18,7 @@ from services.summary_service import (
     generate_summary_text,
 )
 from services.meeting_service import load_meeting
+from utils.email import send_summary_email
 
 router = APIRouter()
 
@@ -97,3 +98,27 @@ async def download_summary(meeting_id: str, current_user: User = Depends(get_cur
             "Content-Disposition": f"attachment; filename=summary-{meeting_id}.txt"
         }
     )
+
+
+@router.post("/api/summary/{meeting_id}/email")
+async def email_summary(meeting_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """현재 로그인된 사용자의 이메일로 요약본을 전송합니다."""
+    verify_meeting_ownership(meeting_id, current_user.email, db)
+    summary = load_summary(meeting_id)
+    if not summary:
+        raise HTTPException(status_code=404, detail="Summary not found")
+
+    meeting = load_meeting(meeting_id)
+    summary_text = generate_summary_text(summary, meeting)
+    meeting_title = meeting.title if meeting and meeting.title else "회의 요약"
+
+    sent = send_summary_email(
+        recipient_email=current_user.email,
+        meeting_title=meeting_title,
+        summary_text=summary_text,
+        attachment_filename=f"summary-{meeting_id}.txt",
+    )
+    if not sent:
+        raise HTTPException(status_code=500, detail="Failed to send summary email")
+
+    return {"message": "요약본이 이메일로 전송되었습니다", "email": current_user.email}
