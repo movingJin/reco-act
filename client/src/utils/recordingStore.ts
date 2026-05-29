@@ -145,17 +145,42 @@ async function deleteWebSession(sessionId: string): Promise<void> {
   }
 }
 
+// keepSessionId를 제외한 모든 청크를 삭제한다(업로드 실패 후 방치된 옛 세션 청소).
+async function cleanupWebSessions(keepSessionId?: string): Promise<void> {
+  const db = await openDb();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE, 'readwrite');
+      const req = tx.objectStore(STORE).openCursor();
+      req.onsuccess = () => {
+        const cursor = req.result;
+        if (cursor) {
+          if (cursor.value.sessionId !== keepSessionId) cursor.delete();
+          cursor.continue();
+        }
+      };
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch (e) {
+    console.warn('Failed to cleanup web sessions', e);
+  } finally {
+    db.close();
+  }
+}
+
 // ---------------------------------------------------------------------------
 // 네이티브: Directory.Data에 남은 녹음 파일(orphan) 탐색
 // 앱이 녹음 도중 강제 종료되면 path를 Preferences에 기록하기 전에 죽을 수 있다.
 // 이 경우에도 .aac 파일은 디스크에 남으므로(ADTS라 헤더 finalize 불필요해 재생 가능)
 // 디렉토리를 훑어 가장 최근 파일을 복구 후보로 돌려준다.
 // ---------------------------------------------------------------------------
-async function newestNativeOrphan(): Promise<string | null> {
-  if (!isNative) return null;
+// Directory.Data의 녹음 파일 이름을 최신순으로 반환한다.
+async function listNativeRecordings(): Promise<string[]> {
+  if (!isNative) return [];
   try {
     const { files } = await Filesystem.readdir({ directory: NATIVE_DIRECTORY, path: '' });
-    const recordings = files
+    return files
       .filter(
         (f) =>
           f.type === 'file' &&
@@ -163,10 +188,23 @@ async function newestNativeOrphan(): Promise<string | null> {
           f.name.endsWith(NATIVE_FILE_SUFFIX) &&
           (f.size ?? 0) > 0
       )
-      .sort((a, b) => (b.mtime ?? 0) - (a.mtime ?? 0));
-    return recordings.length > 0 ? recordings[0].name : null;
+      .sort((a, b) => (b.mtime ?? 0) - (a.mtime ?? 0))
+      .map((f) => f.name);
   } catch {
-    return null;
+    return [];
+  }
+}
+
+// keepName을 제외한 모든 녹음 파일을 삭제한다(방치된 옛 파일 청소).
+async function cleanupNativeRecordings(keepName?: string): Promise<void> {
+  const names = await listNativeRecordings();
+  for (const name of names) {
+    if (name === keepName) continue;
+    try {
+      await Filesystem.deleteFile({ directory: NATIVE_DIRECTORY, path: name });
+    } catch (e) {
+      console.warn('Failed to delete stale recording', name, e);
+    }
   }
 }
 
@@ -204,7 +242,24 @@ export async function discardRecording(p: PendingRecording): Promise<void> {
 
 // 복구 가능한 녹음을 찾는다. 정상 경로(Preferences pending)를 우선하고,
 // 네이티브에서 메타데이터 기록 전 크래시한 경우 디렉토리의 orphan 파일로 폴백한다.
+//
+// 이 함수는 화면 진입 시(녹음 진행 중이 아닐 때) 호출되므로, 복구 대상으로 유지할
+// 단 하나의 녹음을 제외한 나머지 stale 파일/세션을 함께 청소해 디바이스에 파일이
+// 무한정 누적되지 않게 한다. (가장 최근 미업로드 녹음 1개만 보존)
 export async function recoverPending(currentMeetingId: string): Promise<PendingRecording | null> {
+  const result = await resolvePending(currentMeetingId);
+
+  // 유지할 식별자 외 나머지 청소
+  if (isNative) {
+    await cleanupNativeRecordings(result?.kind === 'native' ? result.path : undefined);
+  } else {
+    await cleanupWebSessions(result?.kind === 'web' ? result.sessionId : undefined);
+  }
+
+  return result;
+}
+
+async function resolvePending(currentMeetingId: string): Promise<PendingRecording | null> {
   const pending = await loadPending();
 
   if (pending) {
@@ -216,8 +271,9 @@ export async function recoverPending(currentMeetingId: string): Promise<PendingR
     }
     // native
     if (!pending.path) {
-      const orphan = await newestNativeOrphan();
-      if (orphan) return { ...pending, path: orphan };
+      const recordings = await listNativeRecordings();
+      if (recordings.length > 0) return { ...pending, path: recordings[0] };
+      await clearPending();
       return null;
     }
     return pending;
@@ -225,14 +281,14 @@ export async function recoverPending(currentMeetingId: string): Promise<PendingR
 
   // Preferences에 기록이 없어도 네이티브 디스크에 남은 파일이 있으면 복구 제안
   if (isNative) {
-    const orphan = await newestNativeOrphan();
-    if (orphan) {
+    const recordings = await listNativeRecordings();
+    if (recordings.length > 0) {
       return {
         kind: 'native',
         meetingId: currentMeetingId,
         mimeType: NATIVE_MIME_TYPE,
         savedAt: 0,
-        path: orphan,
+        path: recordings[0],
       };
     }
   }
