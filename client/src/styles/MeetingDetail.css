@@ -513,3 +513,32 @@ section h3 {
 .modal-body {
   padding: 20px;
 }
+
+/* 업로드되지 못하고 기기에 남은 녹음 복구 배너 */
+.recovery-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background-color: #fff8e1;
+  border: 1px solid #ffd54f;
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+
+.recovery-text {
+  font-size: 14px;
+  color: #8a6d00;
+  line-height: 1.4;
+}
+
+.recovery-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.recovery-actions .btn {
+  flex: 1;
+  min-width: 120px;
+}

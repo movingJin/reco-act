@@ -2,10 +2,21 @@ import { useRef, useState, useEffect, forwardRef, useImperativeHandle } from 're
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { VoiceRecorder } from 'capacitor-voice-recorder';
 import { confirmDialog } from '../utils/dialog';
+import {
+  PendingRecording,
+  NATIVE_DIRECTORY,
+  NATIVE_MIME_TYPE,
+  WEB_MIME_TYPE,
+  WEB_TIMESLICE_MS,
+  savePending,
+  appendWebChunk,
+  discardRecording,
+} from '../utils/recordingStore';
 import '../styles/RecorderControls.css';
 
 interface RecorderControlsProps {
-  onRecordingComplete: (audioBlob: Blob) => void;
+  meetingId: string;
+  onRecordingComplete: (pending: PendingRecording) => void;
 }
 
 export interface RecorderControlsHandle {
@@ -25,14 +36,15 @@ const isNative = Capacitor.isNativePlatform();
 const platform = Capacitor.getPlatform();
 
 const RecorderControls = forwardRef<RecorderControlsHandle, RecorderControlsProps>(
-  ({ onRecordingComplete }, ref) => {
+  ({ meetingId, onRecordingComplete }, ref) => {
   const [isRecording, setIsRecording] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<number | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  // 웹 녹음 청크를 IndexedDB에 묶는 세션 식별자 (시작 시 생성)
+  const webSessionIdRef = useRef<string | null>(null);
   // wall-clock 기반 타이머: 화면이 꺼져 setInterval이 throttle돼도
   // 콜백이 실행되는 시점에 (Date.now() - startedAt) 으로 실제 경과시간을 계산한다.
   const segmentStartRef = useRef<number | null>(null);
@@ -79,22 +91,45 @@ const RecorderControls = forwardRef<RecorderControlsHandle, RecorderControlsProp
         if (platform === 'android') {
           await RecordingService.start();
         }
-        await VoiceRecorder.startRecording();
+        // directory 옵션 → 녹음을 Directory.Data의 파일에 실시간 기록한다.
+        // 정지 시 base64 변환을 하지 않으므로 긴 녹음에서도 OOM이 없고, 파일이 폰에 남는다.
+        await VoiceRecorder.startRecording({ directory: NATIVE_DIRECTORY });
+        // 경로는 정지 시점에야 확정되지만, 녹음 도중 크래시해도 복구할 수 있도록
+        // meetingId만이라도 먼저 기록해 둔다(복구 시 디렉토리의 파일과 매칭).
+        await savePending({
+          kind: 'native',
+          meetingId,
+          mimeType: NATIVE_MIME_TYPE,
+          savedAt: Date.now(),
+        });
       } else {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         streamRef.current = stream;
 
+        const sessionId = `web-${Date.now()}`;
+        webSessionIdRef.current = sessionId;
+        // 청크가 들어올 때마다 IndexedDB로 flush → 탭/브라우저가 죽어도 복구 가능
+        await savePending({
+          kind: 'web',
+          meetingId,
+          mimeType: WEB_MIME_TYPE,
+          savedAt: Date.now(),
+          sessionId,
+        });
+
         const mediaRecorder = new MediaRecorder(stream);
         mediaRecorderRef.current = mediaRecorder;
-        audioChunksRef.current = [];
 
         mediaRecorder.ondataavailable = (event) => {
           if (event.data.size > 0) {
-            audioChunksRef.current.push(event.data);
+            // append 실패해도 녹음은 계속 진행 (다음 청크에서 회복)
+            appendWebChunk(sessionId, event.data).catch((e) =>
+              console.error('Failed to persist chunk:', e)
+            );
           }
         };
 
-        mediaRecorder.start();
+        mediaRecorder.start(WEB_TIMESLICE_MS);
       }
 
       setIsRecording(true);
@@ -137,16 +172,28 @@ const RecorderControls = forwardRef<RecorderControlsHandle, RecorderControlsProp
     }
   };
 
-  const finalizeRecording = (blob: Blob | null) => {
+  const finalizeRecording = (pending: PendingRecording | null) => {
     setIsRecording(false);
     setIsPaused(false);
     resetTimer();
-    if (blob) onRecordingComplete(blob);
+    if (pending) onRecordingComplete(pending);
+  };
+
+  // 정지 후 업로드 여부를 묻고, 저장된 녹음을 업로드(pending 전달) 또는 폐기한다.
+  const finishWithPending = async (pending: PendingRecording) => {
+    const shouldUpload = await confirmDialog('녹취된 내용을 업로드 하시겠습니까?');
+    if (shouldUpload) {
+      finalizeRecording(pending);
+    } else {
+      await discardRecording(pending);
+      finalizeRecording(null);
+    }
   };
 
   const stopRecording = async () => {
     if (!isRecording) return;
     stopTimer();
+    const durationMs = accumulatedMsRef.current;
 
     try {
       if (isNative) {
@@ -154,28 +201,48 @@ const RecorderControls = forwardRef<RecorderControlsHandle, RecorderControlsProp
         if (platform === 'android') {
           await RecordingService.stop().catch(() => {});
         }
-        const shouldUpload = await confirmDialog('녹취된 내용을 업로드 하시겠습니까?');
-        if (shouldUpload && result.value?.recordDataBase64) {
-          const blob = base64ToBlob(
-            result.value.recordDataBase64,
-            result.value.mimeType || 'audio/aac'
-          );
-          finalizeRecording(blob);
-        } else {
+        const path = result.value?.path;
+        if (!path) {
+          // directory 옵션을 줬으므로 path가 와야 한다. 없으면 복구 불가로 간주.
+          console.error('Native recording returned no path', result);
+          alert('녹취 파일을 저장하지 못했습니다');
           finalizeRecording(null);
+          return;
         }
+        const pending: PendingRecording = {
+          kind: 'native',
+          meetingId,
+          mimeType: result.value?.mimeType || NATIVE_MIME_TYPE,
+          savedAt: Date.now(),
+          durationMs: result.value?.msDuration ?? durationMs,
+          path,
+        };
+        await savePending(pending);
+        await finishWithPending(pending);
       } else if (mediaRecorderRef.current) {
         const recorder = mediaRecorderRef.current;
+        const sessionId = webSessionIdRef.current;
         recorder.onstop = async () => {
-          const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
-          const shouldUpload = await confirmDialog('녹취된 내용을 업로드 하시겠습니까?');
-          finalizeRecording(shouldUpload ? audioBlob : null);
+          if (streamRef.current) {
+            streamRef.current.getTracks().forEach((track) => track.stop());
+            streamRef.current = null;
+          }
+          if (!sessionId) {
+            finalizeRecording(null);
+            return;
+          }
+          const pending: PendingRecording = {
+            kind: 'web',
+            meetingId,
+            mimeType: WEB_MIME_TYPE,
+            savedAt: Date.now(),
+            durationMs,
+            sessionId,
+          };
+          await savePending(pending);
+          await finishWithPending(pending);
         };
         recorder.stop();
-        if (streamRef.current) {
-          streamRef.current.getTracks().forEach((track) => track.stop());
-          streamRef.current = null;
-        }
       }
     } catch (error) {
       console.error('Failed to stop recording:', error);
@@ -189,17 +256,34 @@ const RecorderControls = forwardRef<RecorderControlsHandle, RecorderControlsProp
 
     try {
       if (isNative) {
-        await VoiceRecorder.stopRecording().catch(() => {});
+        const result = await VoiceRecorder.stopRecording().catch(() => null);
         if (platform === 'android') {
           await RecordingService.stop().catch(() => {});
         }
+        // 업로드하지 않고 버리는 경로 → 저장된 파일과 pending 메타데이터를 정리
+        await discardRecording({
+          kind: 'native',
+          meetingId,
+          mimeType: NATIVE_MIME_TYPE,
+          savedAt: 0,
+          path: result?.value?.path,
+        });
       } else if (mediaRecorderRef.current) {
-        audioChunksRef.current = [];
         mediaRecorderRef.current.onstop = () => {};
         mediaRecorderRef.current.stop();
         if (streamRef.current) {
           streamRef.current.getTracks().forEach((track) => track.stop());
           streamRef.current = null;
+        }
+        if (webSessionIdRef.current) {
+          await discardRecording({
+            kind: 'web',
+            meetingId,
+            mimeType: WEB_MIME_TYPE,
+            savedAt: 0,
+            sessionId: webSessionIdRef.current,
+          });
+          webSessionIdRef.current = null;
         }
       }
     } finally {
@@ -273,15 +357,5 @@ const RecorderControls = forwardRef<RecorderControlsHandle, RecorderControlsProp
 );
 
 RecorderControls.displayName = 'RecorderControls';
-
-// base64 문자열을 Blob으로 변환 (네이티브 녹음 결과 업로드용)
-function base64ToBlob(base64: string, mimeType: string): Blob {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return new Blob([bytes], { type: mimeType });
-}
 
 export default RecorderControls;

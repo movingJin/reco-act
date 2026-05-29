@@ -5,7 +5,14 @@ import TranscriptEditor from './TranscriptEditor';
 import MeetingSettings from './MeetingSettings';
 import SummaryPanel from './SummaryPanel';
 import { saveAndShare } from '../utils/download';
+import {
+  PendingRecording,
+  getUploadBlob,
+  discardRecording,
+  recoverPending,
+} from '../utils/recordingStore';
 import { useModalBackButton } from '../utils/backButton';
+import { confirmDialog } from '../utils/dialog';
 import '../styles/MeetingDetail.css';
 
 interface TranscriptSegment {
@@ -49,6 +56,8 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState, domainsVersion }
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  // 업로드되지 못한 채 디스크에 남아 있는 녹음 (크래시/연결 끊김 복구용)
+  const [recoverable, setRecoverable] = useState<PendingRecording | null>(null);
   const recorderRef = useRef<RecorderControlsHandle>(null);
 
   // Android 백버튼으로 참여자 설정 모달 닫기
@@ -87,6 +96,20 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState, domainsVersion }
   useEffect(() => {
     loadDomains();
   }, [domainsVersion]);
+
+  // 화면 진입 시, 업로드되지 못하고 기기에 남은 녹음이 있는지 확인한다.
+  // (정지 시 OOM 크래시, 업로드 중 연결 끊김, 녹음 도중 강제 종료 등)
+  useEffect(() => {
+    let cancelled = false;
+    recoverPending(meeting.id)
+      .then((pending) => {
+        if (!cancelled) setRecoverable(pending);
+      })
+      .catch((e) => console.error('Failed to check recoverable recording:', e));
+    return () => {
+      cancelled = true;
+    };
+  }, [meeting.id]);
 
   const loadDomains = async () => {
     setIsLoadingDomains(true);
@@ -155,20 +178,19 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState, domainsVersion }
     }
   };
 
-  const handleRecordingComplete = async (audioBlob: Blob) => {
+  // 오디오 Blob을 서버에 업로드하는 공통 핵심. 성공 시 true를 반환하고,
+  // 응답 결과(transcript 등)를 반영한다. 실패하면 예외를 던진다.
+  const postAudio = async (blob: Blob, targetMeetingId: string): Promise<void> => {
     const formData = new FormData();
-    formData.append('file', audioBlob, `meeting-${meeting.id}.wav`);
+    formData.append('file', blob, `meeting-${targetMeetingId}.wav`);
 
     setIsUploading(true);
     setUploadProgress(0);
+    setIsProcessing(true);
 
     try {
-      // API 요청 시작 시 isProcessing을 true로 설정
-      // 이렇게 하면 pending 상태부터 처리 중 메시지가 표시됨
-      setIsProcessing(true);
-
       const response = await apiClient.post(
-        `/api/meetings/${meeting.id}/upload-audio`,
+        `/api/meetings/${targetMeetingId}/upload-audio`,
         formData,
         {
           headers: {
@@ -185,27 +207,62 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState, domainsVersion }
         }
       );
 
-      // 응답 수신 후 업로드 상태 종료
       setIsUploading(false);
-
       if (response.data.segments) {
         setTranscript(response.data.segments);
       }
-      
-      // 응답 수신 후 처리 완료
       setIsProcessing(false);
-      
-      // 업로드 완료 후 부모 컴포넌트의 재조회 로직 호출
-      // 이를 통해 meeting.audio_files가 업데이트되어 다운로드 버튼이 활성화됨
+      // meeting.audio_files 갱신 → 다운로드 버튼 활성화
       onUpdate();
     } catch (error) {
-      console.error('Failed to upload audio:', error);
-      alert('음성 파일 업로드에 실패했습니다');
       setIsUploading(false);
       setIsProcessing(false);
+      throw error;
     } finally {
       setUploadProgress(0);
     }
+  };
+
+  // 디스크에 저장된 녹음(pending)을 업로드한다. 성공이 확인된 뒤에만 파일을 삭제하고,
+  // 실패(연결 끊김 포함)하면 파일을 그대로 두어 복구 배너로 재업로드할 수 있게 한다.
+  const uploadPending = async (pending: PendingRecording) => {
+    try {
+      const audioBlob = await getUploadBlob(pending);
+      await postAudio(audioBlob, pending.meetingId);
+      // 업로드가 성공으로 확인됐을 때만 저장된 녹음을 삭제한다.
+      await discardRecording(pending);
+      setRecoverable(null);
+    } catch (error) {
+      console.error('Failed to upload recording:', error);
+      // 파일은 보존한 채 복구 배너를 띄운다. (응답만 유실됐을 수도 있으므로 안내)
+      setRecoverable(pending);
+      alert(
+        '음성 파일 업로드에 실패했거나 응답을 받지 못했습니다.\n' +
+          '녹음은 기기에 저장되어 있으니, 잠시 후 다시 업로드해 주세요.'
+      );
+    }
+  };
+
+  const handleRecordingComplete = (pending: PendingRecording) => {
+    void uploadPending(pending);
+  };
+
+  // 사용자가 직접 고른 WAV 파일 업로드 (영속화 불필요 — 이미 파일로 존재)
+  const handleFileUpload = async (file: File) => {
+    try {
+      await postAudio(file, meeting.id);
+    } catch (error) {
+      console.error('Failed to upload audio:', error);
+      alert('음성 파일 업로드에 실패했습니다');
+    }
+  };
+
+  const handleDiscardRecoverable = async () => {
+    if (!recoverable) return;
+    const ok = await confirmDialog('저장된 녹음을 삭제하시겠습니까? 되돌릴 수 없습니다.');
+    if (!ok) return;
+    await discardRecording(recoverable);
+    setRecoverable(null);
   };
 
   return (
@@ -247,7 +304,34 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState, domainsVersion }
             <section className="recorder-section">
               <h3>녹음</h3>
               <div className="recorder-container">
-                <RecorderControls ref={recorderRef} onRecordingComplete={handleRecordingComplete} />
+                {recoverable && (
+                  <div className="recovery-banner">
+                    <span className="recovery-text">
+                      ⚠️ 업로드되지 않은 녹음이 기기에 저장되어 있습니다.
+                    </span>
+                    <div className="recovery-actions">
+                      <button
+                        className="btn btn-primary"
+                        onClick={() => uploadPending(recoverable)}
+                        disabled={isUploading}
+                      >
+                        다시 업로드
+                      </button>
+                      <button
+                        className="btn btn-danger"
+                        onClick={handleDiscardRecoverable}
+                        disabled={isUploading}
+                      >
+                        삭제
+                      </button>
+                    </div>
+                  </div>
+                )}
+                <RecorderControls
+                  ref={recorderRef}
+                  meetingId={meeting.id}
+                  onRecordingComplete={handleRecordingComplete}
+                />
                 <div className="or-divider">또는</div>
                 <div className="file-upload-section">
                   <input
@@ -257,7 +341,7 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState, domainsVersion }
                     onChange={(e) => {
                       const file = e.target.files?.[0];
                       if (file) {
-                        handleRecordingComplete(file as Blob);
+                        void handleFileUpload(file);
                       }
                       e.target.value = '';
                     }}
