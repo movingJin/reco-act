@@ -42,7 +42,8 @@ def db_meeting_to_model(db_meeting: DBMeeting, db_transcripts: List[DBTranscript
         transcript=transcript_segments,
         audio_files=audio_files,
         subject=db_meeting.subject,
-        domain_id=db_meeting.domain_id
+        domain_id=db_meeting.domain_id,
+        transcription_status=db_meeting.transcription_status,
     )
 
 
@@ -357,12 +358,71 @@ def update_meeting_domain(meeting_id: str, domain_id: Optional[int]) -> Optional
         
         db_meeting.domain_id = domain_id
         db.commit()
-        
+
         db_transcripts = db.query(DBTranscript).filter(DBTranscript.meeting_id == meeting_id).all()
         return db_meeting_to_model(db_meeting, db_transcripts)
     except Exception as e:
         print(f"Error updating meeting domain: {e}")
         db.rollback()
         return None
+    finally:
+        db.close()
+
+
+def set_transcription_status(
+    meeting_id: str,
+    status: Optional[str],
+    source_audio_path: Optional[str] = None,
+    set_source: bool = False,
+    clear_source: bool = False,
+) -> None:
+    """STT 변환 상태를 갱신한다.
+
+    - set_source=True: source_audio_path를 함께 기록 (업로드 직후 재처리용 원본 경로)
+    - clear_source=True: source_audio_path를 비움 (변환 완료 후)
+    """
+    db = get_db()
+    try:
+        db_meeting = db.query(DBMeeting).filter(DBMeeting.id == meeting_id).first()
+        if not db_meeting:
+            return
+        db_meeting.transcription_status = status
+        if set_source:
+            db_meeting.source_audio_path = source_audio_path
+        if clear_source:
+            db_meeting.source_audio_path = None
+        db.commit()
+    except Exception as e:
+        print(f"Error setting transcription status for {meeting_id}: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+
+def get_pending_transcription(meeting_id: str):
+    """재처리에 필요한 (source_audio_path, domain_id)를 반환. 없으면 (None, None)."""
+    db = get_db()
+    try:
+        db_meeting = db.query(DBMeeting).filter(DBMeeting.id == meeting_id).first()
+        if not db_meeting:
+            return None, None
+        return db_meeting.source_audio_path, db_meeting.domain_id
+    finally:
+        db.close()
+
+
+def list_stuck_transcription_ids() -> List[str]:
+    """status가 'processing'인 채로 멈춘 미팅 id 목록 (서버 재시작 시 재큐잉용)."""
+    db = get_db()
+    try:
+        rows = (
+            db.query(DBMeeting.id)
+            .filter(DBMeeting.transcription_status == "processing")
+            .all()
+        )
+        return [r[0] for r in rows]
+    except Exception as e:
+        print(f"Error listing stuck transcriptions: {e}")
+        return []
     finally:
         db.close()

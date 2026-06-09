@@ -1,10 +1,7 @@
-import tempfile
-
-from fastapi import APIRouter, HTTPException, UploadFile, File, Depends
+from fastapi import APIRouter, HTTPException, UploadFile, File, Depends, BackgroundTasks
 from fastapi.responses import FileResponse, StreamingResponse
 from pathlib import Path
 from datetime import datetime
-from pydub import AudioSegment
 from sqlalchemy.orm import Session
 
 from models.meeting import (
@@ -23,17 +20,16 @@ from services.meeting_service import (
     create_meeting,
     update_meeting_settings,
     update_transcript,
-    add_audio_file,
     update_subject,
     update_meeting_title,
     delete_meeting,
-    get_domain_keywords,
     update_meeting_domain,
+    set_transcription_status,
 )
+from services.transcription_service import process_audio_transcription
 from utils.config import RECORDS_DIR
 from utils.auth import get_current_user
 from database import get_db, User, Meeting as DBMeeting
-from clova_stt import convert as clova_convert
 
 router = APIRouter()
 
@@ -86,11 +82,20 @@ async def update_settings(meeting_id: str, request: MeetingSettingsRequest, curr
     return meeting
 
 
-@router.post("/api/meetings/{meeting_id}/upload-audio", response_model=UploadAudioResponse)
-async def upload_audio(meeting_id: str, file: UploadFile = File(...), current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+@router.post("/api/meetings/{meeting_id}/upload-audio", response_model=UploadAudioResponse, status_code=202)
+async def upload_audio(
+    meeting_id: str,
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """
-    Upload WAV file and run STT conversion using Naver Clova Speech.
-    Returns the transcription segments.
+    업로드된 오디오 파일을 저장하고 STT 변환은 백그라운드로 처리한다.
+
+    파일 수신이 끝나면 즉시 202(status='processing')로 응답하므로, 응답이 수 분간
+    지연돼(화면 꺼짐 등으로) 끊기는 문제가 사라진다. 프론트는 이후 회의 상태를
+    폴링해 변환 완료(done)/실패(failed)를 확인한다.
     """
     verify_meeting_ownership(meeting_id, current_user.email, db)
 
@@ -100,89 +105,32 @@ async def upload_audio(meeting_id: str, file: UploadFile = File(...), current_us
         raise HTTPException(status_code=404, detail="Meeting not found")
 
     try:
-        # Save uploaded file
-        timestamp = int(datetime.now().timestamp() * 1000)
-        filename = f"meeting_{meeting_id}_{timestamp}.wav"
-        file_path = UPLOADS_DIR / filename
-
-        # Create directory if it doesn't exist
+        # 원본 업로드 파일을 디스크에 스트리밍 저장한다(메모리에 전체를 올리지 않음).
+        # 변환(ffmpeg)·STT는 백그라운드에서 수행하므로 여기서는 저장만 한다.
         UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+        timestamp = int(datetime.now().timestamp() * 1000)
+        suffix = Path(file.filename or "upload").suffix or ".dat"
+        source_path = UPLOADS_DIR / f"source_{meeting_id}_{timestamp}{suffix}"
 
-        # 클라이언트가 보낸 파일을 그대로 저장하지 않고 항상 WAV로 정규화한다.
-        # 모바일(Capacitor) 클라이언트는 m4a/AAC로 녹음하므로 ffmpeg로 변환이 필요하고,
-        # 웹 클라이언트가 보낸 WAV도 동일 경로로 통과시켜 다운스트림(Clova STT)이
-        # 항상 WAV를 받도록 보장한다.
-        # 1시간+ 녹음은 수백 MB가 될 수 있으므로 전체 파일을 메모리에 올리지 않고
-        # 1MB 청크로 임시 파일에 스트리밍 저장한다.
-        with tempfile.NamedTemporaryFile(delete=False, suffix=Path(file.filename or 'upload').suffix) as tmp:
+        with open(source_path, "wb") as f:
             while chunk := await file.read(1024 * 1024):
-                tmp.write(chunk)
-            tmp_path = tmp.name
-        try:
-            audio = AudioSegment.from_file(tmp_path)
-            audio.export(str(file_path), format="wav")
-        finally:
-            Path(tmp_path).unlink(missing_ok=True)
+                f.write(chunk)
 
-        # Call Clova STT conversion
-        try:
-            # 미팅에 도메인이 설정되어 있으면 해당 도메인의 키워드를 조회
-            domain_keywords = None
-            if hasattr(meeting, 'domain_id') and meeting.domain_id:
-                # Meeting 모델에 domain_id를 반영해야 함 (아래에서 추가)
-                # 여기서는 db 직접 조회로 처리
-                from database import SessionLocal, Meeting as DBMeetingLocal
-                db_local = SessionLocal()
-                try:
-                    db_meeting = db_local.query(DBMeetingLocal).filter(DBMeetingLocal.id == meeting_id).first()
-                    if db_meeting and db_meeting.domain_id:
-                        domain_keywords = get_domain_keywords(db_meeting.domain_id)
-                finally:
-                    db_local.close()
+        # 상태를 processing으로 표시하고, 재처리(서버 재시작 복구)를 위해 원본 경로를 보관.
+        set_transcription_status(
+            meeting_id,
+            "processing",
+            source_audio_path=str(source_path),
+            set_source=True,
+        )
 
-            segments, speaker_names = clova_convert(
-                file_path=str(file_path),
-                language="ko-KR",
-                domain_keywords=domain_keywords
-            )
-        except Exception as e:
-            print(f"Clova STT conversion error: {e}")
-            raise HTTPException(
-                status_code=500,
-                detail=f"STT conversion failed: {str(e)}"
-            )
-
-        # Clova가 인식한 화자 수에 맞춰 미팅 참가자를 갱신한다.
-        # speaker_names는 label(1-based) 오름차순이므로 speaker_index(0-based)와 1:1 매칭된다.
-        if speaker_names:
-            updated = update_meeting_settings(meeting_id, speaker_names)
-            if updated:
-                meeting = updated
-
-        # segments는 이미 TranscriptSegment 리스트 형식
-        # Convert TranscriptSegment to TranscriptSegmentResponse for API response
-        response_segments = []
-        for seg in segments:
-            speaker_name = meeting.participants[seg.speaker_index]
-            response_segments.append(TranscriptSegmentResponse(
-                speaker_index=seg.speaker_index,
-                speaker_name=speaker_name,
-                text=seg.text,
-                start=seg.start,
-                end=seg.end
-            ))
-
-        # Save the transcript segments to the meeting (using internal format)
-        transcript_data = [seg.model_dump() for seg in segments]
-        update_transcript(meeting_id, transcript_data)
-
-        # Update meeting with audio file reference
-        add_audio_file(meeting_id, str(file_path))
+        # 응답 전송 후 백그라운드에서 변환 수행 (동기 함수 → threadpool 실행)
+        background_tasks.add_task(process_audio_transcription, meeting_id)
 
         return UploadAudioResponse(
-            status="ok",
-            segments=response_segments,
-            meeting_id=meeting_id
+            status="processing",
+            segments=[],
+            meeting_id=meeting_id,
         )
 
     except HTTPException:

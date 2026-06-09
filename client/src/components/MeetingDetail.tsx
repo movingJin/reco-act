@@ -37,7 +37,11 @@ interface Meeting {
   transcript: TranscriptSegment[];
   audio_files: string[];
   domain_id?: number;
+  transcription_status?: 'processing' | 'done' | 'failed' | null;
 }
+
+// STT 변환 상태 폴링 주기
+const POLL_INTERVAL_MS = 4000;
 
 interface MeetingDetailProps {
   meeting: Meeting;
@@ -56,27 +60,121 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState, domainsVersion }
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  // STT 변환이 서버에서 실패한 상태
+  const [sttFailed, setSttFailed] = useState(false);
   // 업로드되지 못한 채 디스크에 남아 있는 녹음 (크래시/연결 끊김 복구용)
   const [recoverable, setRecoverable] = useState<PendingRecording | null>(null);
   const recorderRef = useRef<RecorderControlsHandle>(null);
+  // STT 상태 폴링 제어
+  const pollTimerRef = useRef<number | null>(null);
+  const pollTargetRef = useRef<{ meetingId: string; pending: PendingRecording | null } | null>(null);
 
   // Android 백버튼으로 참여자 설정 모달 닫기
   useModalBackButton(showParticipantSettingsModal, () => setShowParticipantSettingsModal(false));
 
+  const stopPolling = () => {
+    if (pollTimerRef.current) {
+      clearTimeout(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+    pollTargetRef.current = null;
+  };
+
+  // 서버의 STT 변환 상태를 한 번 조회하고, 진행 중이면 다음 폴링을 예약한다.
+  // 각 폴링이 짧은 요청이라 화면이 꺼졌다 켜져도 다음 폴링이 완료 상태를 집어온다.
+  const pollOnce = async () => {
+    const target = pollTargetRef.current;
+    if (!target) return;
+    try {
+      const res = await apiClient.get(`/api/meetings/${target.meetingId}`);
+      const status = res.data.transcription_status as Meeting['transcription_status'];
+
+      if (status === 'done') {
+        if (target.meetingId === meeting.id) setTranscript(res.data.transcript || []);
+        if (target.pending) await discardRecording(target.pending);
+        setRecoverable(null);
+        setIsProcessing(false);
+        setSttFailed(false);
+        stopPolling();
+        onUpdate();
+        return;
+      }
+      if (status === 'failed') {
+        if (target.pending) setRecoverable(target.pending);
+        setIsProcessing(false);
+        setSttFailed(true);
+        stopPolling();
+        return;
+      }
+      if (status === 'processing') {
+        setIsProcessing(true);
+        pollTimerRef.current = window.setTimeout(pollOnce, POLL_INTERVAL_MS);
+        return;
+      }
+      // null/기타 → 폴링 종료
+      setIsProcessing(false);
+      stopPolling();
+    } catch (error) {
+      // 일시적 오류(화면 꺼짐 등) → 잠시 후 재시도
+      console.error('Polling failed, will retry:', error);
+      pollTimerRef.current = window.setTimeout(pollOnce, POLL_INTERVAL_MS);
+    }
+  };
+
+  const startPolling = (meetingId: string, pending: PendingRecording | null) => {
+    stopPolling();
+    pollTargetRef.current = { meetingId, pending };
+    setIsProcessing(true);
+    setSttFailed(false);
+    void pollOnce();
+  };
+
+  // 회의 변경/진입 시: transcript 로드 + STT 상태에 따라 폴링/복구를 결정한다.
   useEffect(() => {
-    // 회의가 변경되면 서버에서 transcript 로드
-    const loadMeetingWithTranscript = async () => {
+    let cancelled = false;
+    setSelectedDomain(meeting.domain_id || null);
+    setSttFailed(false);
+    setIsProcessing(false);
+    setRecoverable(null);
+    stopPolling();
+
+    const init = async () => {
+      let serverStatus: Meeting['transcription_status'] = null;
       try {
-        const response = await apiClient.get(`/api/meetings/${meeting.id}`);
-        setTranscript(response.data.transcript || []);
+        const res = await apiClient.get(`/api/meetings/${meeting.id}`);
+        if (cancelled) return;
+        setTranscript(res.data.transcript || []);
+        serverStatus = (res.data.transcription_status ?? null) as Meeting['transcription_status'];
       } catch (error) {
+        if (cancelled) return;
         console.error('Failed to load meeting transcript:', error);
         setTranscript([]);
       }
+
+      // 기기에 업로드되지 못하고 남은 녹음 확인 (크래시/연결 끊김/녹음 중 강제 종료 복구)
+      const pending = await recoverPending(meeting.id).catch(() => null);
+      if (cancelled) return;
+
+      if (serverStatus === 'processing') {
+        // 서버가 변환 중 → 폴링 재개. 로컬 파일이 있으면 done 시 정리된다.
+        startPolling(meeting.id, pending);
+        return;
+      }
+      if (serverStatus === 'done') {
+        // 서버에 이미 반영됨 → 로컬 임시파일만 정리 (재업로드/중복 방지)
+        if (pending) await discardRecording(pending);
+        return;
+      }
+      // failed 또는 미처리: 로컬 파일이 있으면 복구 배너 노출
+      if (serverStatus === 'failed') setSttFailed(true);
+      if (pending) setRecoverable(pending);
     };
-    
-    loadMeetingWithTranscript();
-    setSelectedDomain(meeting.domain_id || null);
+    init();
+
+    return () => {
+      cancelled = true;
+      stopPolling();
+    };
   }, [meeting.id]);
 
   useEffect(() => {
@@ -97,19 +195,20 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState, domainsVersion }
     loadDomains();
   }, [domainsVersion]);
 
-  // 화면 진입 시, 업로드되지 못하고 기기에 남은 녹음이 있는지 확인한다.
-  // (정지 시 OOM 크래시, 업로드 중 연결 끊김, 녹음 도중 강제 종료 등)
+  // 앱이 다시 포그라운드로 돌아오면 즉시 1회 폴링 (대기시간 단축)
   useEffect(() => {
-    let cancelled = false;
-    recoverPending(meeting.id)
-      .then((pending) => {
-        if (!cancelled) setRecoverable(pending);
-      })
-      .catch((e) => console.error('Failed to check recoverable recording:', e));
-    return () => {
-      cancelled = true;
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && pollTargetRef.current) {
+        if (pollTimerRef.current) {
+          clearTimeout(pollTimerRef.current);
+          pollTimerRef.current = null;
+        }
+        void pollOnce();
+      }
     };
-  }, [meeting.id]);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, []);
 
   const loadDomains = async () => {
     setIsLoadingDomains(true);
@@ -178,18 +277,18 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState, domainsVersion }
     }
   };
 
-  // 오디오 Blob을 서버에 업로드하는 공통 핵심. 성공 시 true를 반환하고,
-  // 응답 결과(transcript 등)를 반영한다. 실패하면 예외를 던진다.
+  // 오디오 Blob을 서버로 전송한다(파일 수신까지만). 서버는 202로 즉시 응답하고
+  // STT는 백그라운드로 처리하므로, 이 함수는 "파일 전송 성공" 시점에 반환된다.
+  // 실패(전송 실패/연결 끊김)하면 예외를 던진다.
   const postAudio = async (blob: Blob, targetMeetingId: string): Promise<void> => {
     const formData = new FormData();
     formData.append('file', blob, `meeting-${targetMeetingId}.wav`);
 
     setIsUploading(true);
     setUploadProgress(0);
-    setIsProcessing(true);
 
     try {
-      const response = await apiClient.post(
+      await apiClient.post(
         `/api/meetings/${targetMeetingId}/upload-audio`,
         formData,
         {
@@ -206,35 +305,25 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState, domainsVersion }
           },
         }
       );
-
-      setIsUploading(false);
-      if (response.data.segments) {
-        setTranscript(response.data.segments);
-      }
-      setIsProcessing(false);
-      // meeting.audio_files 갱신 → 다운로드 버튼 활성화
-      onUpdate();
-    } catch (error) {
-      setIsUploading(false);
-      setIsProcessing(false);
-      throw error;
     } finally {
+      setIsUploading(false);
       setUploadProgress(0);
     }
   };
 
-  // 디스크에 저장된 녹음(pending)을 업로드한다. 성공이 확인된 뒤에만 파일을 삭제하고,
-  // 실패(연결 끊김 포함)하면 파일을 그대로 두어 복구 배너로 재업로드할 수 있게 한다.
+  // 디스크에 저장된 녹음(pending)을 업로드한다. 파일 전송이 성공하면 서버가
+  // 변환을 시작하므로, 변환 완료(done)가 폴링으로 확인된 뒤에 로컬 파일을 삭제한다.
+  // 전송 실패(연결 끊김 포함) 시 파일을 보존해 복구 배너로 재업로드할 수 있게 한다.
   const uploadPending = async (pending: PendingRecording) => {
     try {
       const audioBlob = await getUploadBlob(pending);
       await postAudio(audioBlob, pending.meetingId);
-      // 업로드가 성공으로 확인됐을 때만 저장된 녹음을 삭제한다.
-      await discardRecording(pending);
+      // 202 수신 = 서버가 파일을 받아 변환 시작. 폴링으로 done/failed를 확인한다.
       setRecoverable(null);
+      startPolling(pending.meetingId, pending);
     } catch (error) {
       console.error('Failed to upload recording:', error);
-      // 파일은 보존한 채 복구 배너를 띄운다. (응답만 유실됐을 수도 있으므로 안내)
+      // 파일은 보존한 채 복구 배너를 띄운다. (전송 실패 → 재업로드 가능)
       setRecoverable(pending);
       alert(
         '음성 파일 업로드에 실패했거나 응답을 받지 못했습니다.\n' +
@@ -251,6 +340,7 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState, domainsVersion }
   const handleFileUpload = async (file: File) => {
     try {
       await postAudio(file, meeting.id);
+      startPolling(meeting.id, null);
     } catch (error) {
       console.error('Failed to upload audio:', error);
       alert('음성 파일 업로드에 실패했습니다');
@@ -307,7 +397,9 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState, domainsVersion }
                 {recoverable && (
                   <div className="recovery-banner">
                     <span className="recovery-text">
-                      ⚠️ 업로드되지 않은 녹음이 기기에 저장되어 있습니다.
+                      {sttFailed
+                        ? '⚠️ 음성 인식에 실패했습니다. 기기에 저장된 녹음으로 다시 시도할 수 있습니다.'
+                        : '⚠️ 업로드되지 않은 녹음이 기기에 저장되어 있습니다.'}
                     </span>
                     <div className="recovery-actions">
                       <button
@@ -325,6 +417,13 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState, domainsVersion }
                         삭제
                       </button>
                     </div>
+                  </div>
+                )}
+                {sttFailed && !recoverable && (
+                  <div className="recovery-banner">
+                    <span className="recovery-text">
+                      ⚠️ 음성 인식에 실패했습니다. 파일을 다시 업로드해 주세요.
+                    </span>
                   </div>
                 )}
                 <RecorderControls

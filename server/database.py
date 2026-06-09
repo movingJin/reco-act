@@ -42,6 +42,13 @@ class Meeting(Base):
     audio_file = Column(String, nullable=True)
     subject = Column(Text, nullable=True)
     domain_id = Column(Integer, ForeignKey("domain_keywords.id", ondelete="SET NULL"), nullable=True)
+    # STT 변환 상태: 'processing' | 'done' | 'failed' | NULL(미처리)
+    # 업로드는 즉시 응답하고 STT는 백그라운드로 돌리므로, 진행 상태를 여기에 기록해
+    # 프론트가 폴링으로 조회한다.
+    transcription_status = Column(String, nullable=True)
+    # 변환 대기 중인 원본 업로드 파일 경로. 백그라운드 STT 도중 서버가 재시작돼도
+    # 기동 시 이 경로로 재처리(re-queue)할 수 있게 보관하고, 완료 후 비운다.
+    source_audio_path = Column(String, nullable=True)
 
     user = relationship("User", back_populates="meetings")
 

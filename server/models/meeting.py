@@ -45,6 +45,8 @@ class Meeting(BaseModel):
     audio_files: List[str] = []
     subject: Optional[str] = None
     domain_id: Optional[int] = None  # References DomainKeywords.id
+    # STT 변환 상태: 'processing' | 'done' | 'failed' | None(미처리)
+    transcription_status: Optional[str] = None
 
 
 class MeetingListResponse(BaseModel):
