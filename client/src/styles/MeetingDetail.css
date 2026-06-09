@@ -143,6 +143,11 @@
   }
 }
 
+/* 모바일 전용 빠른 이동 버튼 (데스크톱에서는 숨김) */
+.mobile-jump-fab {
+  display: none;
+}
+
 /* New layout: Left-Right split */
 .detail-container {
   display: flex;
@@ -213,6 +218,32 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  /* 모바일 전용 빠른 이동 플로팅 버튼 노출 */
+  .mobile-jump-fab {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    position: fixed;
+    right: 16px;
+    bottom: calc(16px + var(--safe-bottom, 0px));
+    z-index: 900;
+    padding: 12px 18px;
+    background-color: #2196f3;
+    color: #fff;
+    border: none;
+    border-radius: 24px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+    transition: background-color 0.2s, transform 0.1s;
+  }
+
+  .mobile-jump-fab:active {
+    background-color: #1565c0;
+    transform: scale(0.96);
   }
 
   /* 모달이 안전영역과 헤더 컨트롤 위로 충분히 보이도록 */

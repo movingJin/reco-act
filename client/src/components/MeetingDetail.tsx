@@ -68,6 +68,11 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState, domainsVersion }
   // STT 상태 폴링 제어
   const pollTimerRef = useRef<number | null>(null);
   const pollTargetRef = useRef<{ meetingId: string; pending: PendingRecording | null } | null>(null);
+  // 모바일: STT 내용이 길 때 AI요약/맨 위로 빠르게 이동하는 플로팅 버튼 제어
+  const detailRootRef = useRef<HTMLDivElement>(null);
+  const summarySectionRef = useRef<HTMLDivElement>(null);
+  const [jumpVisible, setJumpVisible] = useState(false);
+  const [jumpToSummary, setJumpToSummary] = useState(true);
 
   // Android 백버튼으로 참여자 설정 모달 닫기
   useModalBackButton(showParticipantSettingsModal, () => setShowParticipantSettingsModal(false));
@@ -209,6 +214,53 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState, domainsVersion }
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
   }, []);
+
+  // 모바일 전용 이동 버튼: 스크롤 컨테이너(.right-panel) 안에서
+  // 현재 위치에 따라 "AI 요약으로 이동" / "맨 위로 이동"을 토글한다.
+  // 콘텐츠가 길어 스크롤이 필요할 때만 노출한다.
+  useEffect(() => {
+    const root = detailRootRef.current;
+    const summary = summarySectionRef.current;
+    if (!root || !summary) return;
+    const scroller = root.closest('.right-panel') as HTMLElement | null;
+    if (!scroller) return;
+
+    const update = () => {
+      const scrollable = scroller.scrollHeight - scroller.clientHeight > 80;
+      setJumpVisible(scrollable);
+      const summaryTop =
+        summary.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+      // 요약 섹션 상단이 화면 절반 위로 올라오면 "맨 위로" 모드로 전환
+      setJumpToSummary(summaryTop > scroller.clientHeight * 0.5);
+    };
+
+    update();
+    scroller.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update);
+    // STT/요약 로딩으로 콘텐츠 높이가 바뀌는 경우에도 갱신
+    const ro = new ResizeObserver(update);
+    ro.observe(root);
+    return () => {
+      scroller.removeEventListener('scroll', update);
+      window.removeEventListener('resize', update);
+      ro.disconnect();
+    };
+  }, []);
+
+  const handleJumpClick = () => {
+    const root = detailRootRef.current;
+    const scroller = root?.closest('.right-panel') as HTMLElement | null;
+    if (!scroller) return;
+    if (jumpToSummary && summarySectionRef.current) {
+      const top =
+        summarySectionRef.current.getBoundingClientRect().top -
+        scroller.getBoundingClientRect().top +
+        scroller.scrollTop;
+      scroller.scrollTo({ top, behavior: 'smooth' });
+    } else {
+      scroller.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
 
   const loadDomains = async () => {
     setIsLoadingDomains(true);
@@ -356,7 +408,7 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState, domainsVersion }
   };
 
   return (
-    <div className="meeting-detail">
+    <div className="meeting-detail" ref={detailRootRef}>
       <div className="detail-header">
         <h1>{meeting.title}</h1>
         <div className="header-controls">
@@ -501,10 +553,22 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState, domainsVersion }
         </div>
 
         {/* Right Side - Summary Panel */}
-        <div className="summary-section-wrapper">
+        <div className="summary-section-wrapper" ref={summarySectionRef}>
           <SummaryPanel meetingId={meeting.id} />
         </div>
       </div>
+
+      {/* 모바일 전용: AI 요약 / 맨 위로 빠른 이동 버튼 */}
+      {jumpVisible && (
+        <button
+          type="button"
+          className="mobile-jump-fab"
+          onClick={handleJumpClick}
+          aria-label={jumpToSummary ? 'AI 요약으로 이동' : '맨 위로 이동'}
+        >
+          {jumpToSummary ? 'AI 요약 ↓' : '맨 위로 ↑'}
+        </button>
+      )}
 
       {/* Participant Settings Modal */}
       {showParticipantSettingsModal && (
