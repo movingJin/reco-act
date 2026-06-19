@@ -432,6 +432,181 @@
   background: #999;
 }
 
+/* 회의록 미리보기 버튼 */
+.preview-notes-btn {
+  padding: 8px 16px;
+  background-color: #ff9800;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.preview-notes-btn:hover:not(:disabled) {
+  background-color: #f57c00;
+}
+
+.preview-notes-btn:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* 회의록 미리보기 모달 */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 16px;
+}
+
+.modal-content {
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  max-width: 720px;
+  width: 100%;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  animation: modalSlideUp 0.25s ease-out;
+}
+
+@keyframes modalSlideUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e0e0e0;
+  background-color: #fafafa;
+  border-radius: 8px 8px 0 0;
+  flex-shrink: 0;
+}
+
+.modal-header h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #333;
+}
+
+.close-button {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: #999;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.close-button:hover {
+  background-color: #e0e0e0;
+  color: #333;
+}
+
+.modal-body {
+  padding: 20px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.notes-preview-textarea {
+  width: 100%;
+  min-height: 50vh;
+  padding: 12px 14px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 14px;
+  font-family: inherit;
+  line-height: 1.6;
+  resize: vertical;
+  box-sizing: border-box;
+  white-space: pre-wrap;
+}
+
+.notes-preview-textarea:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 16px 20px;
+  border-top: 1px solid #e0e0e0;
+  background-color: #fafafa;
+  border-radius: 0 0 8px 8px;
+  flex-shrink: 0;
+}
+
+/* 회의록 재생성 버튼 (모달 footer 좌측 정렬) */
+.regenerate-notes-btn {
+  margin-right: auto;
+  padding: 8px 16px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  white-space: nowrap;
+}
+
+.regenerate-notes-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.regenerate-notes-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* 회의록 재생성 중 표시 */
+.notes-regenerating {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 50vh;
+  color: #667eea;
+  font-size: 15px;
+  font-weight: 600;
+}
+
 /* 모바일: 헤더의 제목과 버튼이 좁은 화면에서 겹치지 않도록 줄바꿈 */
 @media (max-width: 767px) {
   .summary-panel {
@@ -455,10 +630,11 @@
     justify-content: flex-end;
   }
 
+  .preview-notes-btn,
   .email-summary-btn,
   .download-summary-btn,
   .generate-summary-btn {
-    flex: 1 1 calc(33% - 6px);
+    flex: 1 1 calc(50% - 4px);
     padding: 8px 10px;
     font-size: 13px;
     text-align: center;
@@ -471,5 +647,23 @@
 
   .summary-section {
     padding: 12px;
+  }
+
+  .modal-footer .save-btn,
+  .modal-footer .cancel-btn,
+  .modal-footer .download-summary-btn,
+  .modal-footer .email-summary-btn {
+    flex: 1 1 calc(50% - 4px);
+    text-align: center;
+  }
+
+  .modal-footer .regenerate-notes-btn {
+    flex: 1 1 100%;
+    margin-right: 0;
+    text-align: center;
+  }
+
+  .notes-preview-textarea {
+    min-height: 40vh;
   }
 }

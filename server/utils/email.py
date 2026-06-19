@@ -66,20 +66,22 @@ def send_verification_email(recipient_email: str, code: str) -> bool:
 def send_summary_email(
     recipient_email: str,
     meeting_title: str,
-    summary_text: str,
+    attachment_bytes: bytes,
     attachment_filename: str,
+    attachment_maintype: str = "application",
+    attachment_subtype: str = "vnd.openxmlformats-officedocument.wordprocessingml.document",
 ) -> bool:
-    """AI 요약본을 텍스트 파일 첨부로 사용자에게 전송합니다."""
+    """AI 회의록을 Word 문서 첨부로 사용자에게 전송합니다."""
     try:
-        subject = f"[reco-act] 회의 요약: {meeting_title}"
+        subject = f"[reco-act] 회의록: {meeting_title}"
 
         html_body = f"""
         <html>
             <body style="font-family: Arial, sans-serif; background-color: #f5f5f5; padding: 20px;">
                 <div style="max-width: 600px; margin: 0 auto; background-color: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                    <h2 style="color: #333; margin-bottom: 20px;">AI 회의 요약</h2>
+                    <h2 style="color: #333; margin-bottom: 20px;">AI 회의록</h2>
                     <p style="color: #666; margin-bottom: 20px;">
-                        요청하신 회의 <strong>"{meeting_title}"</strong>의 AI 요약본을 첨부파일로 전송드립니다.
+                        요청하신 회의 <strong>"{meeting_title}"</strong>의 회의록을 첨부파일로 전송드립니다.
                     </p>
                     <p style="color: #999; font-size: 12px; margin-top: 20px;">
                         본 메일은 reco-act에서 자동 발송되었습니다.
@@ -96,8 +98,8 @@ def send_summary_email(
 
         message.attach(MIMEText(html_body, "html"))
 
-        attachment = MIMEBase("text", "plain", charset="utf-8")
-        attachment.set_payload(summary_text.encode("utf-8"))
+        attachment = MIMEBase(attachment_maintype, attachment_subtype)
+        attachment.set_payload(attachment_bytes)
         encoders.encode_base64(attachment)
         attachment.add_header(
             "Content-Disposition",

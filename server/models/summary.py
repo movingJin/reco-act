@@ -25,9 +25,15 @@ class UpdateNextStepRequest(BaseModel):
     next_steps: List[str]
 
 
+class UpdateMeetingNotesRequest(BaseModel):
+    """Request model for updating the meeting notes (회의록)."""
+    meeting_notes: str
+
+
 class SummaryResponse(BaseModel):
     """API response model for meeting segment (uses speaker name)."""
     meeting_id: str
     paragraphs: List[Paragraph]
     next_steps: List[str]
     subject: Optional[str] = None
+    meeting_notes: Optional[str] = None

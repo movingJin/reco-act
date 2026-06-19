@@ -16,6 +16,7 @@ interface SummaryData {
   subject: string | null;
   paragraphs: Paragraph[];
   next_steps: string[];
+  meeting_notes: string | null;
 }
 
 interface SummaryPanelProps {
@@ -33,6 +34,10 @@ function SummaryPanel({ meetingId }: SummaryPanelProps) {
   const [subjectText, setSubjectText] = useState('');
   const [nextStepsText, setNextStepsText] = useState<string[]>([]);
   const [paragraphEdits, setParagraphEdits] = useState<{ [key: number]: Paragraph }>({});
+  const [showNotesPreview, setShowNotesPreview] = useState(false);
+  const [meetingNotesText, setMeetingNotesText] = useState('');
+  const [isSavingNotes, setIsSavingNotes] = useState(false);
+  const [isRegeneratingNotes, setIsRegeneratingNotes] = useState(false);
 
   // Load summary on mount
   useEffect(() => {
@@ -45,6 +50,7 @@ function SummaryPanel({ meetingId }: SummaryPanelProps) {
       setSummary(response.data);
       setSubjectText(response.data.subject || '');
       setNextStepsText(response.data.next_steps || []);
+      setMeetingNotesText(response.data.meeting_notes || '');
     } catch (error) {
       // Summary might not exist yet
       console.log('Summary not found, create new one');
@@ -58,6 +64,7 @@ function SummaryPanel({ meetingId }: SummaryPanelProps) {
       setSummary(response.data);
       setSubjectText(response.data.subject || '');
       setNextStepsText(response.data.next_steps || []);
+      setMeetingNotesText(response.data.meeting_notes || '');
     } catch (error) {
       console.error('Failed to generate summary:', error);
       alert('요약 생성에 실패했습니다');
@@ -166,15 +173,61 @@ function SummaryPanel({ meetingId }: SummaryPanelProps) {
     });
   };
 
+  // 미리보기에서 편집한 회의록 본문을 서버에 저장한다. 저장된 SummaryData를 반환.
+  const persistMeetingNotes = async (text: string): Promise<SummaryData | null> => {
+    try {
+      const response = await apiClient.put(
+        `/api/summary/${meetingId}/meeting-notes`,
+        { meeting_notes: text }
+      );
+      setSummary(response.data);
+      setMeetingNotesText(response.data.meeting_notes || '');
+      return response.data;
+    } catch (error) {
+      console.error('Failed to save meeting notes:', error);
+      alert('회의록 저장에 실패했습니다');
+      return null;
+    }
+  };
+
+  const handleSaveNotes = async () => {
+    setIsSavingNotes(true);
+    const saved = await persistMeetingNotes(meetingNotesText);
+    setIsSavingNotes(false);
+    if (saved) {
+      alert('회의록이 저장되었습니다');
+    }
+  };
+
+  // 기존 요약은 그대로 두고 회의록 본문만 다시 생성한다.
+  const handleRegenerateNotes = async () => {
+    if (!window.confirm('현재 회의록 내용을 새로 생성한 내용으로 교체합니다. 진행할까요?')) {
+      return;
+    }
+    setIsRegeneratingNotes(true);
+    try {
+      const response = await apiClient.post(
+        `/api/summary/${meetingId}/meeting-notes/regenerate`
+      );
+      setSummary(response.data);
+      setMeetingNotesText(response.data.meeting_notes || '');
+    } catch (error) {
+      console.error('Failed to regenerate meeting notes:', error);
+      alert('회의록 재생성에 실패했습니다');
+    } finally {
+      setIsRegeneratingNotes(false);
+    }
+  };
+
   const handleSendEmail = async () => {
     setIsSendingEmail(true);
     try {
       const response = await apiClient.post(`/api/summary/${meetingId}/email`);
       const email = response.data?.email;
-      alert(email ? `요약본이 ${email}로 전송되었습니다` : '요약본이 이메일로 전송되었습니다');
+      alert(email ? `회의록이 ${email}로 전송되었습니다` : '회의록이 이메일로 전송되었습니다');
     } catch (error) {
-      console.error('Failed to send summary email:', error);
-      alert('요약 이메일 전송에 실패했습니다');
+      console.error('Failed to send meeting notes email:', error);
+      alert('회의록 이메일 전송에 실패했습니다');
     } finally {
       setIsSendingEmail(false);
     }
@@ -186,11 +239,16 @@ function SummaryPanel({ meetingId }: SummaryPanelProps) {
         `/api/summary/${meetingId}/download`,
         { responseType: 'blob' }
       );
-      await saveAndShare(response.data, `summary-${meetingId}.txt`);
+      await saveAndShare(response.data, `meeting-notes-${meetingId}.docx`);
     } catch (error) {
-      console.error('Failed to download summary:', error);
-      alert('요약 다운로드에 실패했습니다');
+      console.error('Failed to download meeting notes:', error);
+      alert('회의록 다운로드에 실패했습니다');
     }
+  };
+
+  const openNotesPreview = () => {
+    setMeetingNotesText(summary?.meeting_notes || '');
+    setShowNotesPreview(true);
   };
 
   const formatTime = (ms: number): string => {
@@ -228,24 +286,33 @@ function SummaryPanel({ meetingId }: SummaryPanelProps) {
         <h2>AI 요약</h2>
         <div className="summary-buttons">
           {(() => {
-            const hasSummaryContent = !!summary && (summary.paragraphs.length > 0 || !!summary.subject || summary.next_steps.length > 0);
+            const hasMeetingNotes = !!summary && !!summary.meeting_notes;
+            const notesTitle = hasMeetingNotes ? undefined : "먼저 AI 요약을 생성해주세요";
             return (
               <>
                 <button
+                  className="preview-notes-btn"
+                  onClick={openNotesPreview}
+                  disabled={!hasMeetingNotes}
+                  title={hasMeetingNotes ? "회의록을 미리보고 편집" : notesTitle}
+                >
+                  📝 회의록 미리보기
+                </button>
+                <button
                   className="email-summary-btn"
                   onClick={handleSendEmail}
-                  disabled={!hasSummaryContent || isSendingEmail}
-                  title={hasSummaryContent ? "가입한 이메일로 요약본 전송" : "먼저 AI 요약을 생성해주세요"}
+                  disabled={!hasMeetingNotes || isSendingEmail}
+                  title={hasMeetingNotes ? "가입한 이메일로 회의록(Word) 전송" : notesTitle}
                 >
                   {isSendingEmail ? '전송 중...' : '📧 이메일 전송'}
                 </button>
                 <button
                   className="download-summary-btn"
                   onClick={handleDownloadSummary}
-                  disabled={!hasSummaryContent}
-                  title={hasSummaryContent ? "요약 내용을 텍스트로 다운로드" : "먼저 AI 요약을 생성해주세요"}
+                  disabled={!hasMeetingNotes}
+                  title={hasMeetingNotes ? "회의록을 Word 문서로 다운로드" : notesTitle}
                 >
-                  🔽 요약 다운로드
+                  🔽 회의록 다운로드
                 </button>
               </>
             );
@@ -458,6 +525,59 @@ function SummaryPanel({ meetingId }: SummaryPanelProps) {
           </div>
         </section>
       </div>
+
+      {/* 회의록 미리보기 (편집 가능) 모달 */}
+      {showNotesPreview && (
+        <div className="modal-overlay" onClick={() => setShowNotesPreview(false)}>
+          <div className="modal-content notes-preview-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>회의록 미리보기</h2>
+              <button
+                className="close-button"
+                onClick={() => setShowNotesPreview(false)}
+              >
+                ×
+              </button>
+            </div>
+            <div className="modal-body">
+              {isRegeneratingNotes ? (
+                <div className="notes-regenerating">회의록을 재생성하는 중입니다...</div>
+              ) : (
+                <textarea
+                  className="notes-preview-textarea"
+                  value={meetingNotesText}
+                  onChange={(e) => setMeetingNotesText(e.target.value)}
+                  placeholder="회의록 내용을 입력하세요"
+                />
+              )}
+            </div>
+            <div className="modal-footer">
+              <button
+                className="regenerate-notes-btn"
+                onClick={handleRegenerateNotes}
+                disabled={isSavingNotes || isRegeneratingNotes}
+                title="기존 요약을 바탕으로 회의록을 다시 생성"
+              >
+                {isRegeneratingNotes ? '재생성 중...' : '🔄 회의록 재생성'}
+              </button>
+              <button
+                className="save-btn"
+                onClick={handleSaveNotes}
+                disabled={isSavingNotes || isRegeneratingNotes}
+              >
+                {isSavingNotes ? '저장 중...' : '저장'}
+              </button>
+              <button
+                className="cancel-btn"
+                onClick={() => setShowNotesPreview(false)}
+                disabled={isSavingNotes || isRegeneratingNotes}
+              >
+                닫기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

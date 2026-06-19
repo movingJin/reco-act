@@ -41,6 +41,8 @@ class Meeting(Base):
     participants = Column(ARRAY(String))
     audio_file = Column(String, nullable=True)
     subject = Column(Text, nullable=True)
+    # 회의록 양식에 맞춰 생성된 회의록 본문(편집 가능). 요약(subject/paragraphs)과 별개로 보관한다.
+    meeting_notes = Column(Text, nullable=True)
     domain_id = Column(Integer, ForeignKey("domain_keywords.id", ondelete="SET NULL"), nullable=True)
     # STT 변환 상태: 'processing' | 'done' | 'failed' | NULL(미처리)
     # 업로드는 즉시 응답하고 STT는 백그라운드로 돌리므로, 진행 상태를 여기에 기록해
@@ -55,9 +57,9 @@ class Meeting(Base):
 
 class Transcript(Base):
     __tablename__ = "transcripts"
-    
+
     id = Column(Integer, primary_key=True, autoincrement=True)
-    meeting_id = Column(String)
+    meeting_id = Column(String, ForeignKey("meetings.id", ondelete="CASCADE"), nullable=False, index=True)
     speaker_index = Column(Integer)
     text = Column(Text)
     start_time = Column(Integer)  # milliseconds
@@ -69,7 +71,7 @@ class Paragraph(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     meeting_id = Column(String, ForeignKey("meetings.id", ondelete="CASCADE"), nullable=False, index=True)
-    subject = Column(String)
+    subject = Column(Text)
     start = Column(Integer)
     end = Column(Integer)
     summary = Column(Text)
@@ -81,6 +83,7 @@ class NextStep(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     meeting_id = Column(String, ForeignKey("meetings.id", ondelete="CASCADE"), nullable=False, index=True)
     todo = Column(Text)
+    order_index = Column(Integer)
 
 
 class DomainKeywords(Base):

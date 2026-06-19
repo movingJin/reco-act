@@ -6,6 +6,7 @@ from models.summary import (
     SummaryResponse,
     UpdateParagraphRequest,
     UpdateNextStepRequest,
+    UpdateMeetingNotesRequest,
 )
 from utils.auth import get_current_user
 from database import get_db, User, Meeting as DBMeeting
@@ -15,7 +16,9 @@ from services.summary_service import (
     create_summary,
     update_paragraph,
     update_next_steps,
-    generate_summary_text,
+    update_meeting_notes,
+    regenerate_meeting_notes,
+    generate_meeting_notes_docx,
 )
 from services.meeting_service import load_meeting
 from utils.email import send_summary_email
@@ -75,50 +78,71 @@ async def update_next_steps_endpoint(meeting_id: str, request: UpdateNextStepReq
     return result
 
 
+@router.put("/api/summary/{meeting_id}/meeting-notes", response_model=SummaryResponse)
+async def update_meeting_notes_endpoint(meeting_id: str, request: UpdateMeetingNotesRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """회의록(meeting_notes) 본문을 저장합니다. 미리보기에서 편집한 내용을 반영하는 데 사용합니다."""
+    verify_meeting_ownership(meeting_id, current_user.email, db)
+    result = update_meeting_notes(meeting_id, request.meeting_notes)
+    if not result:
+        raise HTTPException(status_code=404, detail="Meeting not found")
+    return result
+
+
+@router.post("/api/summary/{meeting_id}/meeting-notes/regenerate", response_model=SummaryResponse)
+async def regenerate_meeting_notes_endpoint(meeting_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """기존 요약은 유지한 채 회의록(meeting_notes)만 다시 생성합니다."""
+    verify_meeting_ownership(meeting_id, current_user.email, db)
+    result = regenerate_meeting_notes(meeting_id)
+    if not result:
+        raise HTTPException(status_code=400, detail="Failed to regenerate meeting notes")
+    return result
+
+
 @router.get("/api/summary/{meeting_id}/download")
 async def download_summary(meeting_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Download the summary of a meeting as a text file."""
+    """Download the meeting notes (회의록) as a Word(.docx) file."""
     verify_meeting_ownership(meeting_id, current_user.email, db)
     summary = load_summary(meeting_id)
     if not summary:
         raise HTTPException(status_code=404, detail="Summary not found")
+    if not summary.meeting_notes:
+        raise HTTPException(status_code=404, detail="Meeting notes not found")
 
     meeting = load_meeting(meeting_id)
 
-    # Generate summary text
-    summary_text = generate_summary_text(summary, meeting)
-    
-    # Convert text to bytes
-    summary_bytes = summary_text.encode('utf-8')
-    
+    docx_bytes = generate_meeting_notes_docx(summary, meeting)
+
     return StreamingResponse(
-        iter([summary_bytes]),
-        media_type="text/plain; charset=utf-8",
+        iter([docx_bytes]),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         headers={
-            "Content-Disposition": f"attachment; filename=summary-{meeting_id}.txt"
+            "Content-Disposition": f"attachment; filename=meeting-notes-{meeting_id}.docx"
         }
     )
 
 
 @router.post("/api/summary/{meeting_id}/email")
 async def email_summary(meeting_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """현재 로그인된 사용자의 이메일로 요약본을 전송합니다."""
+    """현재 로그인된 사용자의 이메일로 회의록(Word 문서)을 전송합니다."""
     verify_meeting_ownership(meeting_id, current_user.email, db)
     summary = load_summary(meeting_id)
     if not summary:
         raise HTTPException(status_code=404, detail="Summary not found")
+    if not summary.meeting_notes:
+        raise HTTPException(status_code=404, detail="Meeting notes not found")
 
     meeting = load_meeting(meeting_id)
-    summary_text = generate_summary_text(summary, meeting)
-    meeting_title = meeting.title if meeting and meeting.title else "회의 요약"
+    meeting_title = meeting.title if meeting and meeting.title else "회의록"
+
+    docx_bytes = generate_meeting_notes_docx(summary, meeting)
 
     sent = send_summary_email(
         recipient_email=current_user.email,
         meeting_title=meeting_title,
-        summary_text=summary_text,
-        attachment_filename=f"summary-{meeting_id}.txt",
+        attachment_bytes=docx_bytes,
+        attachment_filename=f"meeting-notes-{meeting_id}.docx",
     )
     if not sent:
         raise HTTPException(status_code=500, detail="Failed to send summary email")
 
-    return {"message": "요약본이 이메일로 전송되었습니다", "email": current_user.email}
+    return {"message": "회의록이 이메일로 전송되었습니다", "email": current_user.email}

@@ -17,6 +17,7 @@ class StructuredResult(BaseModel):
     subject: str = Field(description="회의 주제")
     paragraphs: List[Dict[str, Any]] = Field(description="단락별 요약된 회의내용")
     next_steps: List[str] = Field(description="회의에서 도출된 다음 단계")
+    meeting_notes: str = Field(description="회의내용을 기반으로 한 회의록")
 
 
 class NodeState(TypedDict):
@@ -25,6 +26,7 @@ class NodeState(TypedDict):
     subject: str
     summaries: List[str]
     next_steps: List[str]
+    meeting_notes: str
     current_step: str
 
 
@@ -42,11 +44,13 @@ class SummaryNode:
 
         workflow.add_node("create_paragraphs", create_paragraphs)
         workflow.add_node("organize_next_steps_and_subject", organize_next_steps_and_subject)
+        workflow.add_node("create_meeting_notes", create_meeting_notes)
 
         workflow.set_entry_point("create_paragraphs")
 
         workflow.add_edge("create_paragraphs", "organize_next_steps_and_subject")
-        workflow.add_edge("organize_next_steps_and_subject", END)
+        workflow.add_edge("organize_next_steps_and_subject", "create_meeting_notes")
+        workflow.add_edge("create_meeting_notes", END)
 
         # 그래프 컴파일
         return workflow.compile()
@@ -57,18 +61,17 @@ class SummaryNode:
             "meeting_id": meeting_id,
             "paragraphs": [],
             "next_steps": [],
+            "meeting_notes": "",
             "current_step": "initialized"
         }
 
         try:
             result = self.graph.invoke(initial_state)
-            subject = result.get("subject")
-            paragraphs = result.get("paragraphs")
-            next_steps = result.get("next_steps")
             return StructuredResult(
-                subject=subject,
-                paragraphs=paragraphs,
-                next_steps=next_steps
+                subject=result.get("subject"),
+                paragraphs=result.get("paragraphs"),
+                next_steps=result.get("next_steps"),
+                meeting_notes=result.get("meeting_notes") or ""
             )
         except (ContentFilterFinishReasonError, BadRequestError, ValueError) as e:
             paragraphs = str(e)
@@ -137,56 +140,9 @@ def create_paragraphs(state: NodeState) -> NodeState:
     return state
 
 
-def summarize_meeting(state: NodeState) -> NodeState:
-    """회의내용 요약 함수"""
-    state["current_step"] = "summarize_meeting"
-    summaries = []
-    paragraphs = state["paragraphs"]
-    for idx, paragraph in enumerate(paragraphs):
-        prompt = f"""
-        다음 회의록을 읽고, 요약해줘.
-        {paragraph}
-        """
-        messages = [
-            SystemMessage(
-                content=f"""
-                당신의 정체성:
-                - 당신은 단락별 회의내용을 요약하는 전문가입니다.
-                - 요약된 단락요약은 최대 500자가 넘지 않게 작성하세요.
-
-                당신의 역할:
-                단락의 문맥을 파악하고 회의요약과 주제를 리턴하세요.
-                단락을 요약할 수 없다면, 요약과 주제는 빈 문자열("")을 리턴합니다.
-                입력된 단락의 내용을 기반으로 객관적으로 답변해야 합니다. 불필요한 설명이나 단락에 없는 내용은 추가하지 마세요.
-                return example:
-                {{
-                    "subject": "기술협상 및 계획수립",
-                    "summary": "기술협상을 위해 투입되는 인원에 대해 계획이 필요하며 공유 요청함.\n 계획을 수립하는데 있어 필요한 정보가 있다면 언제든 연락달라고 함."
-                }}
-                """
-            ),
-            HumanMessage(content=prompt),
-        ]
-
-        class StructuredOutput(BaseModel):
-            subject: str
-            summary: str
-
-        creative_llm = get_llm(0)
-        structured_lld = creative_llm.with_structured_output(StructuredOutput)
-        response = structured_lld.invoke(messages)
-        summaries.append({
-            "subject": response.subject,
-            "summary": response.summary
-        })
-
-    state["summaries"] = summaries
-    return state
-
-
-def organize_next_steps_and_subject(state: NodeState) -> StructuredResult:
+def organize_next_steps_and_subject(state: NodeState) -> NodeState:
     """
-    다락을 분석하여 회의주제와 다음 할 일을 도출하는 함수
+    단락을 분석하여 회의주제와 다음 할 일을 도출하는 함수
     """
     state["current_step"] = "organize_next_steps_and_subject"
     paragraphs = state["paragraphs"]
@@ -223,8 +179,85 @@ def organize_next_steps_and_subject(state: NodeState) -> StructuredResult:
     state["subject"] = response.subject
     state["next_steps"] = response.next_steps
 
-    return StructuredResult(
-        paragraphs=state["paragraphs"],
-        subject=state["subject"],
-        next_steps=state["next_steps"]
-    )
+    return state
+
+
+def create_meeting_notes(state: NodeState) -> NodeState:
+    """회의록 생성 함수"""
+    state["current_step"] = "create_meeting_notes"
+    subject = state["subject"]
+    next_steps = state["next_steps"]
+    paragraphs = state["paragraphs"]
+
+    # 회의 개요(일시/참석자 등)는 추론하지 않고 실제 메타데이터로만 채운다.
+    meeting = load_meeting(state["meeting_id"])
+    meeting_title = getattr(meeting, "title", None) or ""
+    meeting_date = getattr(meeting, "created_at", None)
+    meeting_date = str(meeting_date) if meeting_date else ""
+    participants = getattr(meeting, "participants", None) or []
+    participants_text = ", ".join(participants) if participants else ""
+
+    prompt = f"""
+    다음 [회의 메타데이터, 회의내용, 주제, 다음 할 일]을 읽고, 회의록을 작성해줘.
+    회의 제목: {meeting_title}
+    회의 일시: {meeting_date}
+    참석자: {participants_text}
+    주제: {subject}
+    회의내용: {paragraphs}
+    다음 할 일: {next_steps}
+    """
+    messages = [
+        SystemMessage(
+            content=f"""
+            당신의 정체성:
+            - 당신은 단락별 회의내용과 회의요약을 기반으로 회의록을 작성하는 전문가입니다.
+            - 회의록 양식은 아래와 같습니다.
+
+            회의록 양식:
+1. 회의 개요
+• 주제: ...
+• 일시: yyyy-MM-dd hh:mm ~ hh:mm
+• 장소:
+• 참석:
+- 병원:
+- 수행사:
+
+2. 회의 목적
+• ...
+
+3. 주요 논의 사항
+1) ...
+• ...: ...
+2)...
+
+4. 합의 및 결정 사항
+• ...
+
+5. 이슈 및 리스크
+• ...
+
+6. 주요 질의응답 내용
+1) ...
+• Q: ...
+• A: ...
+
+            작성 원칙:
+            - 회의록 양식에 말줄임표(...)는 회의내용에 따라 채워질 내용입니다.
+            - "1. 회의 개요"의 주제/일시/참석은 제공된 회의 메타데이터(회의 제목, 회의 일시, 참석자)와 주제로만 채우고, 제공되지 않은 항목(예: 장소, 병원/수행사 구분)은 추측하지 말고 빈 칸으로 둡니다.
+            - "3. 주요 논의 사항" 아래의 하위 항목은 회의내용에 따라 1), 2), ... 형태로 자유롭게 구성합니다.
+            - 회의내용에 명백히 근거한 사실만 담백하게 기술하고, 추측·과장·해석·미사여구를 넣지 않습니다.
+            - 회의내용에 근거가 없어 채울 수 없는 항목(섹션)은 임의로 만들어내지 말고 생략합니다.
+            - 회의에서 언급된 표현과 용어를 그대로 사용하고, 새로운 정보를 추가하지 않습니다.
+            """
+        ),
+        HumanMessage(content=prompt),
+    ]
+    class StructuredOutput(BaseModel):
+        meeting_notes: str
+
+    creative_llm = get_llm(0)
+    structured_lld = creative_llm.with_structured_output(StructuredOutput)
+    response = structured_lld.invoke(messages)
+    state["meeting_notes"] = response.meeting_notes
+
+    return state
