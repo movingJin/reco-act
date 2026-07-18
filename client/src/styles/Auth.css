@@ -286,6 +286,22 @@ body {
   cursor: not-allowed;
 }
 
+.auth-footer-link {
+  text-align: center;
+  margin-top: 20px;
+}
+
+.auth-footer-link a {
+  color: #999;
+  font-size: 12px;
+  text-decoration: none;
+}
+
+.auth-footer-link a:hover {
+  color: #667eea;
+  text-decoration: underline;
+}
+
 /* ==================== 프로필 페이지 ==================== */
 .profile-container {
   display: flex;

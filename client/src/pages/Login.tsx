@@ -78,6 +78,10 @@ export const Login: React.FC = () => {
           <Link to="/signup" className="auth-link">회원가입</Link>
           <Link to="/forgot-password" className="auth-link">비밀번호 재설정</Link>
         </div>
+
+        <div className="auth-footer-link">
+          <Link to="/privacy">개인정보처리방침</Link>
+        </div>
       </div>
     </div>
   );

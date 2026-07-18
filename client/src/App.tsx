@@ -9,6 +9,7 @@ import { Login } from './pages/Login';
 import { Signup } from './pages/Signup';
 import { ForgotPassword } from './pages/ForgotPassword';
 import { Profile } from './pages/Profile';
+import { PrivacyPolicy } from './pages/PrivacyPolicy';
 import { confirmDialog } from './utils/dialog';
 import { useAndroidBackButton } from './utils/backButton';
 import './styles/App.css';
@@ -218,6 +219,7 @@ function App() {
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<Signup />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/privacy" element={<PrivacyPolicy />} />
             <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
             <Route path="/meetings" element={<ProtectedRoute><MeetingApp /></ProtectedRoute>} />
             <Route path="*" element={<Navigate to="/meetings" replace />} />
