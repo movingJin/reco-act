@@ -27,6 +27,7 @@ services:
       - PYTHONPATH=/workspace
       - PYTHONUNBUFFERED=1
       - ENVIRONMENT=prod
+      - TZ=Asia/Seoul
     networks:
       - app-network
     healthcheck:
