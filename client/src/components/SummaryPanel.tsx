@@ -21,9 +21,20 @@ interface SummaryData {
 
 interface SummaryPanelProps {
   meetingId: string;
+  // Android 전용: 기기에 영구 보관된 녹취가 있어 로컬 재생이 가능한지 여부.
+  // false면(웹/과거 미팅 등) 단락 재생 버튼 자체를 노출하지 않는다.
+  canPlayLocally?: boolean;
+  // 현재 재생 중인 단락 id (전체 재생바와 오디오 엘리먼트는 MeetingDetail이 소유·공유한다)
+  playingParagraphId?: number | null;
+  onToggleParagraphPlayback?: (paragraphId: number, startMs: number, endMs: number) => void;
 }
 
-function SummaryPanel({ meetingId }: SummaryPanelProps) {
+function SummaryPanel({
+  meetingId,
+  canPlayLocally,
+  playingParagraphId = null,
+  onToggleParagraphPlayback,
+}: SummaryPanelProps) {
   const [summary, setSummary] = useState<SummaryData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -510,6 +521,22 @@ function SummaryPanel({ meetingId }: SummaryPanelProps) {
                     >
                       <div className="paragraph-header">
                         <h4>{paragraph.subject}</h4>
+                        {canPlayLocally && paragraph.id != null && (
+                          <button
+                            type="button"
+                            className={
+                              'paragraph-play-btn' +
+                              (playingParagraphId === paragraph.id ? ' playing' : '')
+                            }
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onToggleParagraphPlayback?.(paragraph.id!, paragraph.start, paragraph.end);
+                            }}
+                            title={playingParagraphId === paragraph.id ? '일시정지' : '이 구간 재생'}
+                          >
+                            {playingParagraphId === paragraph.id ? '⏸' : '▶'}
+                          </button>
+                        )}
                         <div className="paragraph-time">
                           {formatTime(paragraph.start)} - {formatTime(paragraph.end)}
                         </div>

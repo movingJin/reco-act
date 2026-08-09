@@ -229,14 +229,34 @@ def add_audio_file(meeting_id: str, audio_file_path: str) -> Optional[Meeting]:
         db_meeting = db.query(DBMeeting).filter(DBMeeting.id == meeting_id).first()
         if not db_meeting:
             return None
-        
+
         db_meeting.audio_file = audio_file_path
         db.commit()
-        
+
         db_transcripts = db.query(DBTranscript).filter(DBTranscript.meeting_id == meeting_id).all()
         return db_meeting_to_model(db_meeting, db_transcripts)
     except Exception as e:
         print(f"Error adding audio file: {e}")
+        return None
+    finally:
+        db.close()
+
+
+def clear_audio_file(meeting_id: str) -> Optional[Meeting]:
+    """미팅의 audio_file을 비운다 (서버 사본을 더 이상 보관하지 않을 때 사용)."""
+    db = get_db()
+    try:
+        db_meeting = db.query(DBMeeting).filter(DBMeeting.id == meeting_id).first()
+        if not db_meeting:
+            return None
+
+        db_meeting.audio_file = None
+        db.commit()
+
+        db_transcripts = db.query(DBTranscript).filter(DBTranscript.meeting_id == meeting_id).all()
+        return db_meeting_to_model(db_meeting, db_transcripts)
+    except Exception as e:
+        print(f"Error clearing audio file: {e}")
         return None
     finally:
         db.close()

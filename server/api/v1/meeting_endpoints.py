@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, UploadFile, File, Depends, BackgroundTasks
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Depends, BackgroundTasks
 from fastapi.responses import FileResponse, StreamingResponse
 from pathlib import Path
 from datetime import datetime
@@ -87,6 +87,7 @@ async def upload_audio(
     meeting_id: str,
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
+    keep_server_copy: bool = Form(True),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -96,6 +97,10 @@ async def upload_audio(
     파일 수신이 끝나면 즉시 202(status='processing')로 응답하므로, 응답이 수 분간
     지연돼(화면 꺼짐 등으로) 끊기는 문제가 사라진다. 프론트는 이후 회의 상태를
     폴링해 변환 완료(done)/실패(failed)를 확인한다.
+
+    keep_server_copy=False면 변환된 오디오를 서버에 남기지 않는다(Android처럼
+    클라이언트가 자체적으로 원본을 보관하는 경우). source 파일명에 마커를 남겨
+    서버 재시작 후 재처리(requeue) 시에도 이 의도가 그대로 적용되게 한다.
     """
     verify_meeting_ownership(meeting_id, current_user.email, db)
 
@@ -110,7 +115,8 @@ async def upload_audio(
         UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
         timestamp = int(datetime.now().timestamp() * 1000)
         suffix = Path(file.filename or "upload").suffix or ".dat"
-        source_path = UPLOADS_DIR / f"source_{meeting_id}_{timestamp}{suffix}"
+        marker = "_nokeep" if not keep_server_copy else ""
+        source_path = UPLOADS_DIR / f"source_{meeting_id}_{timestamp}{marker}{suffix}"
 
         with open(source_path, "wb") as f:
             while chunk := await file.read(1024 * 1024):

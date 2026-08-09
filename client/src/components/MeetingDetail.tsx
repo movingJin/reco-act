@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { apiClient } from '../api/authApi';
 import RecorderControls, { RecorderControlsHandle } from './RecorderControls';
 import TranscriptEditor from './TranscriptEditor';
@@ -7,13 +8,19 @@ import SummaryPanel from './SummaryPanel';
 import { saveAndShare } from '../utils/download';
 import {
   PendingRecording,
+  NATIVE_MIME_TYPE,
   getUploadBlob,
   discardRecording,
   recoverPending,
+  persistFinishedRecording,
+  getPersistedRecordingSrc,
+  deletePersistedRecording,
 } from '../utils/recordingStore';
 import { useModalBackButton } from '../utils/backButton';
 import { confirmDialog } from '../utils/dialog';
 import '../styles/MeetingDetail.css';
+
+const isAndroid = Capacitor.getPlatform() === 'android';
 
 interface TranscriptSegment {
   speaker_index: number;
@@ -64,6 +71,12 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState, domainsVersion }
   const [sttFailed, setSttFailed] = useState(false);
   // 업로드되지 못한 채 디스크에 남아 있는 녹음 (크래시/연결 끊김 복구용)
   const [recoverable, setRecoverable] = useState<PendingRecording | null>(null);
+  // Android: 기기에 영구 보관된 녹음의 로컬 재생 소스 (전체/단락 재생 공용). 서버는 STT 완료 직후 사본을 지운다.
+  const [localRecordingSrc, setLocalRecordingSrc] = useState<string | null>(null);
+  // 전체 녹취 재생바와 단락별 재생 버튼이 공유하는 단일 <audio> 엘리먼트.
+  const audioRef = useRef<HTMLAudioElement>(null);
+  // 단락 재생으로 시작된 구간이 있으면 end 지점에서 자동 정지시키기 위한 상태.
+  const [activeSegment, setActiveSegment] = useState<{ id: number; endSec: number } | null>(null);
   const recorderRef = useRef<RecorderControlsHandle>(null);
   // STT 상태 폴링 제어
   const pollTimerRef = useRef<number | null>(null);
@@ -85,6 +98,21 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState, domainsVersion }
     pollTargetRef.current = null;
   };
 
+  // STT 완료가 확인된 pending 녹음을 정리한다.
+  // Android 자체 녹음(kind: 'native')은 기기에 영구 보관(서버는 사본을 갖지 않으므로),
+  // 그 외(web)는 기존처럼 임시 파일을 버린다.
+  const finalizeLocalRecording = async (pending: PendingRecording | null) => {
+    if (!pending) return;
+    if (isAndroid && pending.kind === 'native') {
+      await persistFinishedRecording(pending);
+      if (pending.meetingId === meeting.id) {
+        setLocalRecordingSrc(await getPersistedRecordingSrc(meeting.id));
+      }
+    } else {
+      await discardRecording(pending);
+    }
+  };
+
   // 서버의 STT 변환 상태를 한 번 조회하고, 진행 중이면 다음 폴링을 예약한다.
   // 각 폴링이 짧은 요청이라 화면이 꺼졌다 켜져도 다음 폴링이 완료 상태를 집어온다.
   const pollOnce = async () => {
@@ -96,7 +124,7 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState, domainsVersion }
 
       if (status === 'done') {
         if (target.meetingId === meeting.id) setTranscript(res.data.transcript || []);
-        if (target.pending) await discardRecording(target.pending);
+        if (target.pending) await finalizeLocalRecording(target.pending);
         setRecoverable(null);
         setIsProcessing(false);
         setSttFailed(false);
@@ -143,6 +171,16 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState, domainsVersion }
     setRecoverable(null);
     stopPolling();
 
+    // Android: 이 미팅에 이미 영구 보관된 로컬 녹음이 있는지 확인 (전체/단락 재생용)
+    audioRef.current?.pause();
+    setActiveSegment(null);
+    setLocalRecordingSrc(null);
+    if (isAndroid) {
+      getPersistedRecordingSrc(meeting.id)
+        .then((src) => { if (!cancelled) setLocalRecordingSrc(src); })
+        .catch(() => {});
+    }
+
     const init = async () => {
       let serverStatus: Meeting['transcription_status'] = null;
       try {
@@ -167,7 +205,7 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState, domainsVersion }
       }
       if (serverStatus === 'done') {
         // 서버에 이미 반영됨 → 로컬 임시파일만 정리 (재업로드/중복 방지)
-        if (pending) await discardRecording(pending);
+        if (pending) await finalizeLocalRecording(pending);
         return;
       }
       // failed 또는 미처리: 로컬 파일이 있으면 복구 배너 노출
@@ -300,6 +338,43 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState, domainsVersion }
     }
   };
 
+  // Android 전용: 기기에 보관된 녹음 파일을 삭제한다. 서버는 STT 완료 시점에 이미
+  // 사본을 지웠으므로, 이 작업 후엔 해당 미팅의 녹취 원본이 어디에도 남지 않는다.
+  const handleDeleteLocalRecording = async () => {
+    const ok = await confirmDialog(
+      '기기에 저장된 녹취 파일을 삭제하시겠습니까?\n삭제하면 다시 들을 수 없습니다.'
+    );
+    if (!ok) return;
+    audioRef.current?.pause();
+    setActiveSegment(null);
+    await deletePersistedRecording(meeting.id);
+    setLocalRecordingSrc(null);
+  };
+
+  // 전체 재생바(<audio controls>)와 단락별 재생 버튼이 같은 오디오 엘리먼트를 공유한다.
+  // 재생 중인 구간의 end 시각에 도달하면 자동 정지(단락 재생일 때만 해당).
+  const handleAudioTimeUpdate = () => {
+    const audio = audioRef.current;
+    if (!audio || !activeSegment) return;
+    if (audio.currentTime >= activeSegment.endSec) {
+      audio.pause();
+      setActiveSegment(null);
+    }
+  };
+
+  const handleToggleParagraphPlayback = (paragraphId: number, startMs: number, endMs: number) => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (activeSegment?.id === paragraphId) {
+      audio.pause();
+      setActiveSegment(null);
+      return;
+    }
+    audio.currentTime = startMs / 1000;
+    setActiveSegment({ id: paragraphId, endSec: endMs / 1000 });
+    void audio.play();
+  };
+
   const handleDownloadTranscript = async () => {
     try {
       const response = await apiClient.get(
@@ -332,9 +407,18 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState, domainsVersion }
   // 오디오 Blob을 서버로 전송한다(파일 수신까지만). 서버는 202로 즉시 응답하고
   // STT는 백그라운드로 처리하므로, 이 함수는 "파일 전송 성공" 시점에 반환된다.
   // 실패(전송 실패/연결 끊김)하면 예외를 던진다.
-  const postAudio = async (blob: Blob, targetMeetingId: string): Promise<void> => {
+  //
+  // keepServerCopy: Android는 기기가 이미 원본을 보관하므로 기본적으로 false —
+  // STT 완료 직후 서버가 변환된 오디오 사본을 지운다. 웹은 로컬 영속 보관이 없어
+  // 기본 true(기존 동작 유지).
+  const postAudio = async (
+    blob: Blob,
+    targetMeetingId: string,
+    keepServerCopy: boolean = !isAndroid
+  ): Promise<void> => {
     const formData = new FormData();
     formData.append('file', blob, `meeting-${targetMeetingId}.wav`);
+    formData.append('keep_server_copy', String(keepServerCopy));
 
     setIsUploading(true);
     setUploadProgress(0);
@@ -488,7 +572,7 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState, domainsVersion }
                   <input
                     type="file"
                     id="wav-upload"
-                    accept=".wav,audio/wav"
+                    accept={isAndroid ? `.aac,${NATIVE_MIME_TYPE}` : '.wav,audio/wav'}
                     onChange={(e) => {
                       const file = e.target.files?.[0];
                       if (file) {
@@ -500,16 +584,39 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState, domainsVersion }
                     disabled={isUploading}
                   />
                   <label htmlFor="wav-upload" className="upload-button" style={{ opacity: isUploading ? 0.5 : 1, cursor: isUploading ? 'not-allowed' : 'pointer' }}>
-                    WAV 파일 업로드
+                    {isAndroid ? '녹취 업로드' : 'WAV 파일 업로드'}
                   </label>
-                  <button
-                    className="download-button"
-                    onClick={handleDownloadAudio}
-                    disabled={!meeting.audio_files || meeting.audio_files.length === 0}
-                    title={meeting.audio_files && meeting.audio_files.length > 0 ? "녹취 파일 다운로드" : "업로드된 녹취 파일이 없습니다"}
-                  >
-                    🔽 녹취 다운로드
-                  </button>
+                  {isAndroid ? (
+                    localRecordingSrc && (
+                      <button
+                        className="download-button delete-local-button"
+                        onClick={handleDeleteLocalRecording}
+                        title="기기에 저장된 녹취 파일 삭제"
+                      >
+                        🗑️ 기기에서 녹취 삭제
+                      </button>
+                    )
+                  ) : (
+                    <button
+                      className="download-button"
+                      onClick={handleDownloadAudio}
+                      disabled={!meeting.audio_files || meeting.audio_files.length === 0}
+                      title={meeting.audio_files && meeting.audio_files.length > 0 ? "녹취 파일 다운로드" : "업로드된 녹취 파일이 없습니다"}
+                    >
+                      🔽 녹취 다운로드
+                    </button>
+                  )}
+                  {isAndroid && localRecordingSrc && (
+                    <audio
+                      ref={audioRef}
+                      src={localRecordingSrc}
+                      controls
+                      preload="metadata"
+                      className="full-recording-player"
+                      onTimeUpdate={handleAudioTimeUpdate}
+                      onEnded={() => setActiveSegment(null)}
+                    />
+                  )}
                   <button
                     className="download-button"
                     onClick={handleDownloadTranscript}
@@ -554,7 +661,12 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState, domainsVersion }
 
         {/* Right Side - Summary Panel */}
         <div className="summary-section-wrapper" ref={summarySectionRef}>
-          <SummaryPanel meetingId={meeting.id} />
+          <SummaryPanel
+            meetingId={meeting.id}
+            canPlayLocally={isAndroid && !!localRecordingSrc}
+            playingParagraphId={activeSegment?.id ?? null}
+            onToggleParagraphPlayback={handleToggleParagraphPlayback}
+          />
         </div>
       </div>
 

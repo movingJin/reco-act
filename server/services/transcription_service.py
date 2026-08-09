@@ -17,6 +17,7 @@ from services.meeting_service import (
     update_meeting_settings,
     update_transcript,
     add_audio_file,
+    clear_audio_file,
     get_domain_keywords,
     set_transcription_status,
     get_pending_transcription,
@@ -36,6 +37,10 @@ def process_audio_transcription(meeting_id: str) -> None:
         print(f"[transcription] source audio missing for {meeting_id}: {source_path}")
         set_transcription_status(meeting_id, "failed")
         return
+
+    # source 파일명의 "_nokeep" 마커로 서버 사본 보관 여부를 판단한다(별도 컬럼 없이,
+    # 서버 재시작 후 재처리(requeue_stuck_transcriptions)에서도 동일하게 동작).
+    keep_server_copy = "_nokeep" not in Path(source_path).name
 
     try:
         # 1) WAV 정규화 (모바일은 aac/m4a로 녹음 → Clova는 WAV 기대)
@@ -68,6 +73,14 @@ def process_audio_transcription(meeting_id: str) -> None:
             Path(source_path).unlink(missing_ok=True)
         except Exception as e:
             print(f"[transcription] failed to remove source {source_path}: {e}")
+
+        # 6) 클라이언트(Android)가 원본을 자체 보관하는 경우, 서버 사본은 즉시 제거한다.
+        if not keep_server_copy:
+            try:
+                Path(wav_path).unlink(missing_ok=True)
+            except Exception as e:
+                print(f"[transcription] failed to remove wav {wav_path}: {e}")
+            clear_audio_file(meeting_id)
 
         print(f"[transcription] done for {meeting_id}")
     except Exception as e:

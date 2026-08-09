@@ -331,6 +331,7 @@ section h3 {
 
 .file-upload-section {
   display: flex;
+  flex-wrap: wrap;
   justify-content: center;
   gap: 12px;
 }
@@ -371,6 +372,20 @@ section h3 {
   background-color: #ccc;
   cursor: not-allowed;
   opacity: 0.6;
+}
+
+.delete-local-button {
+  background-color: #e53935;
+}
+
+.delete-local-button:hover:not(:disabled) {
+  background-color: #c62828;
+}
+
+.full-recording-player {
+  flex: 1 1 100%;
+  width: 100%;
+  height: 40px;
 }
 
 .upload-progress-container {

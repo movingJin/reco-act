@@ -21,6 +21,11 @@ export const NATIVE_DIRECTORY = Directory.Data;
 const NATIVE_FILE_PREFIX = 'recording-'; // 플러그인이 생성하는 파일명 패턴
 const NATIVE_FILE_SUFFIX = '.aac';
 
+// 업로드 완료 후 원본을 영구 보관하는 하위 디렉토리 (단락별 재생 기능용, Android 전용).
+// listNativeRecordings()가 Directory.Data 루트만 훑으므로 이 하위 폴더의 파일은
+// "정리 대상 임시 녹음"으로 오인되지 않는다.
+const PERSIST_SUBDIR = 'recordings';
+
 export const WEB_MIME_TYPE = 'audio/wav';
 export const NATIVE_MIME_TYPE = 'audio/aac';
 export const WEB_TIMESLICE_MS = 5000; // 5초마다 청크를 IndexedDB로 flush
@@ -293,4 +298,51 @@ async function resolvePending(currentMeetingId: string): Promise<PendingRecordin
     }
   }
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// 네이티브: 업로드 완료된 녹음의 영구 보관 (단락별 재생, Android 전용)
+// 서버는 STT 완료 직후 오디오 사본을 지우므로, 기기가 유일한 원본이 된다.
+// ---------------------------------------------------------------------------
+
+function persistedRecordingPath(meetingId: string): string {
+  return `${PERSIST_SUBDIR}/${meetingId}.aac`;
+}
+
+// 업로드 성공이 확인된 네이티브 녹음을 임시 위치에서 미팅별 영구 보관 경로로 옮긴다.
+export async function persistFinishedRecording(p: PendingRecording): Promise<void> {
+  if (p.kind !== 'native' || !p.path) return;
+  await Filesystem.mkdir({
+    directory: NATIVE_DIRECTORY,
+    path: PERSIST_SUBDIR,
+    recursive: true,
+  }).catch(() => {});
+  await Filesystem.rename({
+    from: p.path,
+    to: persistedRecordingPath(p.meetingId),
+    directory: NATIVE_DIRECTORY,
+    toDirectory: NATIVE_DIRECTORY,
+  });
+  await clearPending();
+}
+
+// 영구 보관된 녹음이 있으면 <audio>에 바로 쓸 수 있는 로컬 src를 반환한다.
+export async function getPersistedRecordingSrc(meetingId: string): Promise<string | null> {
+  if (!isNative) return null;
+  try {
+    await Filesystem.stat({ directory: NATIVE_DIRECTORY, path: persistedRecordingPath(meetingId) });
+  } catch {
+    return null;
+  }
+  const { uri } = await Filesystem.getUri({ directory: NATIVE_DIRECTORY, path: persistedRecordingPath(meetingId) });
+  return Capacitor.convertFileSrc(uri);
+}
+
+// 기기에 보관된 녹음을 삭제한다("기기에서 녹취 삭제" 버튼). 서버엔 이미 사본이 없다.
+export async function deletePersistedRecording(meetingId: string): Promise<void> {
+  try {
+    await Filesystem.deleteFile({ directory: NATIVE_DIRECTORY, path: persistedRecordingPath(meetingId) });
+  } catch (e) {
+    console.warn('Failed to delete persisted recording', e);
+  }
 }
