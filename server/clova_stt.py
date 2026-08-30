@@ -106,93 +106,7 @@ class ClovaSpeechClient:
         except requests.exceptions.RequestException as e:
             raise RuntimeError(f"Clova API Request Error: {str(e)}")
 
-    def submit_async(
-        self,
-        file_path: str,
-        callback_url: str,
-        language: str = "ko-KR",
-        domain_keywords: Optional[List[str]] = None,
-    ) -> str:
-        """긴 오디오를 위한 비동기(콜백) 인식을 제출하고 job token을 반환한다.
-
-        sync와 달리 처리 완료까지 커넥션을 붙들지 않는다(제출 자체는 수 초 내 끝남).
-        실제 인식 결과는 Clova가 완료 후 callback_url로 POST 해준다.
-        Clova 사양상 async 요청은 callback_url(또는 Object Storage 연동)이 반드시 있어야 한다.
-
-        Returns:
-            token: 이후 fetch_job_result(token)으로 상태를 조회하거나,
-                   콜백 payload의 token과 대조하는 데 사용한다.
-        """
-        if not os.path.exists(file_path):
-            raise FileNotFoundError(f"Audio file not found: {file_path}")
-
-        params = {
-            "language": language,
-            "completion": "async",
-            "callback": callback_url,
-            "fullText": True,
-        }
-        if domain_keywords:
-            params["boostings"] = [
-                {"words": ", ".join(domain_keywords), "weight": 1.0}
-            ]
-
-        headers = {"X-CLOVASPEECH-API-KEY": self.secret_key}
-
-        try:
-            with open(file_path, "rb") as audio_file:
-                files = {
-                    "media": (os.path.basename(file_path), audio_file),
-                    "params": (None, json.dumps(params)),
-                }
-                response = requests.post(
-                    f"{self.invoke_url}/recognizer/upload",
-                    headers=headers,
-                    files=files,
-                    timeout=120,  # 제출 자체는 짧게 끝남(긴 처리는 콜백으로 비동기 전달)
-                )
-            response.raise_for_status()
-            result = response.json()
-        except requests.exceptions.RequestException as e:
-            raise RuntimeError(f"Clova API Request Error: {str(e)}")
-
-        token = result.get("token")
-        if not token:
-            raise RuntimeError(f"Clova API Error: 작업 토큰 발급 실패 ({result})")
-        return token
-
-    def fetch_job_result(self, token: str) -> Dict[str, Any]:
-        """token으로 비동기 작업의 현재 상태/결과를 조회한다.
-
-        주로 서버 재시작으로 콜백을 놓쳤을 수 있는 작업을 복구할 때 사용한다.
-        응답의 "result" 필드는 WAITING|PROCESSING|COMPLETED|FAILED|TIMEOUT.
-        """
-        headers = {"X-CLOVASPEECH-API-KEY": self.secret_key}
-        try:
-            response = requests.get(
-                f"{self.invoke_url}/recognizer/{token}",
-                headers=headers,
-                timeout=30,
-            )
-            response.raise_for_status()
-            return response.json()
-        except requests.exceptions.RequestException as e:
-            raise RuntimeError(f"Clova API Request Error: {str(e)}")
-
-    @staticmethod
-    def parse_result(result: Dict[str, Any]) -> Tuple[List[TranscriptSegment], List[str]]:
-        """COMPLETED 상태인 Clova 응답(sync 응답 또는 콜백/조회 결과 모두 동일 형식)을
-        (TranscriptSegment 리스트, 화자 이름 리스트)로 변환한다."""
-        if result.get("result") != "COMPLETED":
-            raise RuntimeError(
-                f"Clova API Error: {result.get('message', 'Unknown error')}"
-            )
-        segments = ClovaSpeechClient._parse_clova_response(result)
-        speaker_names = ClovaSpeechClient._parse_clova_speakers(result)
-        return segments, speaker_names
-
-    @staticmethod
-    def _parse_clova_speakers(response: Dict[str, Any]) -> List[str]:
+    def _parse_clova_speakers(self, response: Dict[str, Any]) -> List[str]:
         """Clova 응답의 speakers를 label(1-based) 오름차순 이름 리스트로 변환."""
         speakers_data = response.get("speakers") or []
         parsed: List[Tuple[int, str]] = []
@@ -207,8 +121,7 @@ class ClovaSpeechClient:
         parsed.sort(key=lambda x: x[0])
         return [name for _, name in parsed]
 
-    @staticmethod
-    def _parse_clova_response(response: Dict[str, Any]) -> List[TranscriptSegment]:
+    def _parse_clova_response(self, response: Dict[str, Any]) -> List[TranscriptSegment]:
         """
         Clova API 응답을 TranscriptSegment로 변환
 
@@ -273,25 +186,3 @@ def convert(
     return client.convert_file_to_transcript(
         file_path, language, domain_keywords
     )
-
-
-def submit_async(
-    file_path: str,
-    callback_url: str,
-    language: str = "ko-KR",
-    domain_keywords: Optional[List[str]] = None,
-) -> str:
-    """편의 함수: 비동기(콜백) 인식을 제출하고 job token을 반환."""
-    client = ClovaSpeechClient()
-    return client.submit_async(file_path, callback_url, language, domain_keywords)
-
-
-def fetch_job_result(token: str) -> Dict[str, Any]:
-    """편의 함수: token으로 작업 상태/결과를 조회."""
-    client = ClovaSpeechClient()
-    return client.fetch_job_result(token)
-
-
-def parse_result(result: Dict[str, Any]) -> Tuple[List[TranscriptSegment], List[str]]:
-    """편의 함수: COMPLETED 응답을 (segments, speaker_names)로 변환."""
-    return ClovaSpeechClient.parse_result(result)
