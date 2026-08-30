@@ -460,6 +460,37 @@ def get_pending_clova_job(meeting_id: str):
         db.close()
 
 
+def claim_pending_clova_job(meeting_id: str, token: str):
+    """콜백이 처리할 job을 원자적으로 "선점"한다: (wav_path, source_audio_path) 또는 (None, None).
+
+    Naver 웹훅은 같은 완료 알림을 중복 전송할 수 있어(응답 지연 시 재시도 등), 동시에
+    여러 콜백 요청이 같은 meeting_id/token으로 들어올 수 있다. clova_token이 아직 이
+    token과 일치하는 경우에만 UPDATE가 매치되므로(Postgres의 행 단위 잠금), 동시에
+    호출돼도 단 하나의 호출만 성공하고 나머지는 (None, None)을 받아 조용히 무시하게 된다.
+    """
+    db = get_db()
+    try:
+        updated = (
+            db.query(DBMeeting)
+            .filter(DBMeeting.id == meeting_id, DBMeeting.clova_token == token)
+            .update({"clova_token": None}, synchronize_session=False)
+        )
+        if updated == 0:
+            db.rollback()
+            return None, None
+        db_meeting = db.query(DBMeeting).filter(DBMeeting.id == meeting_id).first()
+        wav_path = db_meeting.pending_wav_path if db_meeting else None
+        source_path = db_meeting.source_audio_path if db_meeting else None
+        db.commit()
+        return wav_path, source_path
+    except Exception as e:
+        print(f"Error claiming pending clova job for {meeting_id}: {e}")
+        db.rollback()
+        return None, None
+    finally:
+        db.close()
+
+
 def clear_pending_clova_job(meeting_id: str) -> None:
     """완료/실패 처리 후 대기 중이던 비동기 STT 작업 정보를 비운다."""
     db = get_db()

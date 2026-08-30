@@ -40,6 +40,7 @@ from services.meeting_service import (
     get_pending_transcription,
     set_pending_clova_job,
     get_pending_clova_job,
+    claim_pending_clova_job,
     clear_pending_clova_job,
     list_stuck_transcription_ids,
 )
@@ -111,22 +112,31 @@ def handle_clova_callback(meeting_id: str, payload: dict) -> None:
     콜백 본문 자체에는 실제 인식 결과(segments/speakers)가 실려오지 않고
     {"token", "result": "SUCCEEDED", "message": "Succeeded"} 형태의 완료 알림만
     온다(운영 로그로 확인). 그래서 token으로 GET /recognizer/{token}을 다시 조회해
-    진짜 결과를 받아온다. 콜백 도착 직후 아주 짧게 결과가 아직 준비 안 됐을 수 있어
-    잠깐 재시도한다.
+    진짜 결과를 받아온다. 콜백 도착 직후 잠깐 결과가 아직 준비 안 됐을 수 있어 재시도한다.
+
+    Naver 웹훅은 같은 완료 알림을 중복 전송할 수 있다(운영 로그로 확인 — 처리에 시간이
+    걸려 응답이 늦어지면 재전송하는 것으로 보임). 그래서 실제 처리 전에 job을 원자적으로
+    "선점"해(claim_pending_clova_job), 중복 콜백이 동시에 들어와도 단 하나만 통과시킨다.
+    선점 없이 처리했다면, 늦게 끝난 콜백이 먼저 끝난 콜백의 "done" 결과를 "failed"로
+    덮어써버리는 경쟁 상태가 생긴다(실제로 이 문제로 완료된 작업이 실패로 뒤집힌 사례 있음).
     """
     wav_path, expected_token, source_path = get_pending_clova_job(meeting_id)
 
-    if not wav_path or not source_path:
+    if not wav_path or not source_path or not expected_token:
         print(f"[transcription] callback for {meeting_id} but no pending job found, ignoring")
         return
 
     incoming_token = payload.get("token")
-    if expected_token and incoming_token and incoming_token != expected_token:
+    if incoming_token and incoming_token != expected_token:
         print(f"[transcription] callback token mismatch for {meeting_id}, ignoring (stale job?)")
         return
 
-    token = incoming_token or expected_token
-    keep_server_copy = "_nokeep" not in Path(source_path).name
+    claimed_wav_path, claimed_source_path = claim_pending_clova_job(meeting_id, expected_token)
+    if claimed_wav_path is None:
+        print(f"[transcription] {meeting_id} callback arrived but job already claimed by a concurrent callback, ignoring")
+        return
+
+    keep_server_copy = "_nokeep" not in Path(claimed_source_path).name
 
     if payload.get("result") not in ("SUCCEEDED", "COMPLETED"):
         print(f"[transcription] callback reported failure for {meeting_id}: {payload}")
@@ -134,19 +144,28 @@ def handle_clova_callback(meeting_id: str, payload: dict) -> None:
         clear_pending_clova_job(meeting_id)
         return
 
+    # GetJobStatus의 result는 WAITING|PROCESSING(일시적, 재시도할 값)과
+    # FAILED|TIMEOUT|ERROR_*(끝난 상태, 재시도해도 절대 안 바뀜)로 나뉜다
+    # (https://api.ncloud-docs.com/docs/ai-application-service-clovaspeech-longsentence-getjobstatus).
+    # 후자는 즉시 포기해서 불필요한 대기를 없앤다.
     result = None
     last_error: Exception | None = None
-    for attempt in range(5):
+    for attempt in range(10):
         try:
-            candidate = clova_fetch_job_result(token)
+            candidate = clova_fetch_job_result(expected_token)
         except Exception as e:
             last_error = e
             time.sleep(3)
             continue
-        if candidate.get("result") == "COMPLETED":
+
+        status = candidate.get("result")
+        if status == "COMPLETED":
             result = candidate
             break
-        last_error = RuntimeError(f"unexpected status on fetch: {candidate.get('result')}")
+        if status in ("FAILED", "TIMEOUT") or (status or "").startswith("ERROR_"):
+            last_error = RuntimeError(f"Clova job ended with status {status}: {candidate.get('message')}")
+            break
+        last_error = RuntimeError(f"unexpected status on fetch: {status}")
         time.sleep(3)
 
     if result is None:
@@ -157,7 +176,7 @@ def handle_clova_callback(meeting_id: str, payload: dict) -> None:
 
     try:
         segments, speaker_names = clova_parse_result(result)
-        _finish_transcription(meeting_id, segments, speaker_names, wav_path, source_path, keep_server_copy)
+        _finish_transcription(meeting_id, segments, speaker_names, claimed_wav_path, claimed_source_path, keep_server_copy)
     except Exception as e:
         print(f"[transcription] failed to process callback for {meeting_id}: {e}")
         set_transcription_status(meeting_id, "failed")
