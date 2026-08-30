@@ -51,6 +51,12 @@ class Meeting(Base):
     # 변환 대기 중인 원본 업로드 파일 경로. 백그라운드 STT 도중 서버가 재시작돼도
     # 기동 시 이 경로로 재처리(re-queue)할 수 있게 보관하고, 완료 후 비운다.
     source_audio_path = Column(String, nullable=True)
+    # Clova 비동기(콜백) STT 제출 후 결과를 기다리는 동안의 상태.
+    # pending_wav_path: 제출한 정규화된 WAV 파일 경로(콜백 도착 시 add_audio_file에 사용)
+    # clova_token: 제출 시 발급받은 job token(콜백 위조 방지용 대조 + 서버 재시작 후 상태 재조회용)
+    # 완료/실패 처리 시 둘 다 비운다.
+    pending_wav_path = Column(String, nullable=True)
+    clova_token = Column(String, nullable=True)
 
     user = relationship("User", back_populates="meetings")
 

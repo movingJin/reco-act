@@ -431,6 +431,52 @@ def get_pending_transcription(meeting_id: str):
         db.close()
 
 
+def set_pending_clova_job(meeting_id: str, wav_path: str, token: str) -> None:
+    """비동기(콜백) STT 제출 직후, 콜백이 도착할 때까지 필요한 정보를 기록한다."""
+    db = get_db()
+    try:
+        db_meeting = db.query(DBMeeting).filter(DBMeeting.id == meeting_id).first()
+        if not db_meeting:
+            return
+        db_meeting.pending_wav_path = wav_path
+        db_meeting.clova_token = token
+        db.commit()
+    except Exception as e:
+        print(f"Error setting pending clova job for {meeting_id}: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+
+def get_pending_clova_job(meeting_id: str):
+    """대기 중인 비동기 STT 작업 정보를 반환한다: (pending_wav_path, clova_token, source_audio_path)."""
+    db = get_db()
+    try:
+        db_meeting = db.query(DBMeeting).filter(DBMeeting.id == meeting_id).first()
+        if not db_meeting:
+            return None, None, None
+        return db_meeting.pending_wav_path, db_meeting.clova_token, db_meeting.source_audio_path
+    finally:
+        db.close()
+
+
+def clear_pending_clova_job(meeting_id: str) -> None:
+    """완료/실패 처리 후 대기 중이던 비동기 STT 작업 정보를 비운다."""
+    db = get_db()
+    try:
+        db_meeting = db.query(DBMeeting).filter(DBMeeting.id == meeting_id).first()
+        if not db_meeting:
+            return
+        db_meeting.pending_wav_path = None
+        db_meeting.clova_token = None
+        db.commit()
+    except Exception as e:
+        print(f"Error clearing pending clova job for {meeting_id}: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+
 def list_stuck_transcription_ids() -> List[str]:
     """status가 'processing'인 채로 멈춘 미팅 id 목록 (서버 재시작 시 재큐잉용)."""
     db = get_db()

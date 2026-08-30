@@ -562,6 +562,9 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState, domainsVersion }
                     </span>
                   </div>
                 )}
+                <p className="recording-length-tip">
+                  💡 안정적인 처리를 위해 한 번에 녹음/업로드하는 길이는 75분 이내를 권장합니다.
+                </p>
                 <RecorderControls
                   ref={recorderRef}
                   meetingId={meeting.id}

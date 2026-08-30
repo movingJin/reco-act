@@ -560,6 +560,14 @@ section h3 {
   padding: 20px;
 }
 
+/* 권장 녹음/업로드 길이 안내 */
+.recording-length-tip {
+  margin: 0 0 10px 0;
+  font-size: 13px;
+  color: #666;
+  line-height: 1.4;
+}
+
 /* 업로드되지 못하고 기기에 남은 녹음 복구 배너 */
 .recovery-banner {
   display: flex;

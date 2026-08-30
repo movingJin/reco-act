@@ -219,7 +219,7 @@ def create_meeting_notes(state: NodeState) -> NodeState:
 • 일시: yyyy-MM-dd hh:mm ~ hh:mm
 • 장소:
 • 참석:
-- 병원:
+- 고객사:
 - 수행사:
 
 2. 회의 목적
