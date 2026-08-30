@@ -16,6 +16,7 @@ Clova STT 호출 방식:
 조회해 콜백 유실 여부를 복구한다(requeue_stuck_transcriptions).
 """
 
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import List
@@ -106,6 +107,12 @@ def handle_clova_callback(meeting_id: str, payload: dict) -> None:
 
     인증 없는 공개 엔드포인트로 노출되므로, 제출 시 저장해둔 token과 대조해
     실제로 우리가 요청한 작업의 결과인지 확인한다(불일치/모르는 미팅이면 무시).
+
+    콜백 본문 자체에는 실제 인식 결과(segments/speakers)가 실려오지 않고
+    {"token", "result": "SUCCEEDED", "message": "Succeeded"} 형태의 완료 알림만
+    온다(운영 로그로 확인). 그래서 token으로 GET /recognizer/{token}을 다시 조회해
+    진짜 결과를 받아온다. 콜백 도착 직후 아주 짧게 결과가 아직 준비 안 됐을 수 있어
+    잠깐 재시도한다.
     """
     wav_path, expected_token, source_path = get_pending_clova_job(meeting_id)
 
@@ -113,21 +120,43 @@ def handle_clova_callback(meeting_id: str, payload: dict) -> None:
         print(f"[transcription] callback for {meeting_id} but no pending job found, ignoring")
         return
 
-    token = payload.get("token")
-    if expected_token and token and token != expected_token:
+    incoming_token = payload.get("token")
+    if expected_token and incoming_token and incoming_token != expected_token:
         print(f"[transcription] callback token mismatch for {meeting_id}, ignoring (stale job?)")
         return
 
+    token = incoming_token or expected_token
     keep_server_copy = "_nokeep" not in Path(source_path).name
 
-    if payload.get("result") != "COMPLETED":
-        print(f"[transcription] callback reported failure for {meeting_id}: {payload.get('message')}")
+    if payload.get("result") not in ("SUCCEEDED", "COMPLETED"):
+        print(f"[transcription] callback reported failure for {meeting_id}: {payload}")
+        set_transcription_status(meeting_id, "failed")
+        clear_pending_clova_job(meeting_id)
+        return
+
+    result = None
+    last_error: Exception | None = None
+    for attempt in range(5):
+        try:
+            candidate = clova_fetch_job_result(token)
+        except Exception as e:
+            last_error = e
+            time.sleep(3)
+            continue
+        if candidate.get("result") == "COMPLETED":
+            result = candidate
+            break
+        last_error = RuntimeError(f"unexpected status on fetch: {candidate.get('result')}")
+        time.sleep(3)
+
+    if result is None:
+        print(f"[transcription] failed to fetch completed result for {meeting_id} after callback: {last_error}")
         set_transcription_status(meeting_id, "failed")
         clear_pending_clova_job(meeting_id)
         return
 
     try:
-        segments, speaker_names = clova_parse_result(payload)
+        segments, speaker_names = clova_parse_result(result)
         _finish_transcription(meeting_id, segments, speaker_names, wav_path, source_path, keep_server_copy)
     except Exception as e:
         print(f"[transcription] failed to process callback for {meeting_id}: {e}")
