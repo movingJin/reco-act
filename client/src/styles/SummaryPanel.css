@@ -11,6 +11,8 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  row-gap: 10px;
   padding: 20px;
   background: #fff;
   border-bottom: 1px solid #ddd;
@@ -25,8 +27,10 @@
 
 .summary-buttons {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   align-items: center;
+  justify-content: flex-end;
 }
 
 .download-summary-btn {

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { authApi } from '../api/authApi';
+import { getErrorMessage } from '../utils/error';
 import '../styles/Auth.css';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -49,7 +50,7 @@ export const Signup: React.FC = () => {
     } catch (err: any) {
       setIsEmailAvailable(false);
       setEmailCheckSuccess(false);
-      setEmailCheckMessage(err.response?.data?.detail || '이메일 확인 실패');
+      setEmailCheckMessage(getErrorMessage(err, '이메일 확인 실패'));
     } finally {
       setIsCheckingEmail(false);
     }
@@ -64,7 +65,7 @@ export const Signup: React.FC = () => {
       await authApi.sendVerificationCode(email);
       setStep('verification');
     } catch (err: any) {
-      setError(err.response?.data?.detail || '인증코드 전송 실패');
+      setError(getErrorMessage(err, '인증코드 전송 실패'));
     } finally {
       setIsLoading(false);
     }
@@ -85,7 +86,7 @@ export const Signup: React.FC = () => {
       await authApi.signup(email, name, password, passwordConfirm, verificationCode);
       navigate('/login', { state: { message: '회원가입이 완료되었습니다. 로그인해주세요.' } });
     } catch (err: any) {
-      setError(err.response?.data?.detail || err.message || '회원가입 실패');
+      setError(getErrorMessage(err, err.message || '회원가입 실패'));
     } finally {
       setIsLoading(false);
     }
