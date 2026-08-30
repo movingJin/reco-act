@@ -26,11 +26,6 @@ else:
 
 RECORDS_DIR.mkdir(parents=True, exist_ok=True)
 
-# 운영 배포 시의 공개 도메인(예: https://reco-act.movingjin.com). 설정돼 있으면
-# Clova STT를 비동기(콜백) 방식으로 제출해 긴 녹음도 안정적으로 처리한다.
-# 로컬 개발처럼 외부에서 접근 불가능한 환경에서는 비워두면 기존 sync 방식으로 동작한다.
-PUBLIC_API_BASE_URL = os.getenv("PUBLIC_API_BASE_URL")
-
 logger.info(f"[CONFIG] Environment: {ENVIRONMENT}")
 logger.info(f"[CONFIG] Records directory: {RECORDS_DIR}")
 
