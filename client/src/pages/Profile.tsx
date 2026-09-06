@@ -127,7 +127,17 @@ export const Profile: React.FC = () => {
   return (
     <div className="profile-container">
       <div className="profile-box">
-        <h2 className="profile-title">프로필 관리</h2>
+        <div className="profile-header">
+          <button
+            type="button"
+            className="profile-back-button"
+            onClick={() => navigate(-1)}
+            title="이전 화면으로"
+          >
+            ← 뒤로
+          </button>
+          <h2 className="profile-title">프로필 관리</h2>
+        </div>
 
         {error && <div className="error-message">{error}</div>}
         {success && <div className="success-message">{success}</div>}

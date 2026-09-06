@@ -74,6 +74,10 @@ interface MeetingDetailProps {
 function MeetingDetail({ meeting, onUpdate, onSetRecorderState, domainsVersion }: MeetingDetailProps) {
   const [transcript, setTranscript] = useState<TranscriptSegment[]>(meeting.transcript || []);
   const [showParticipantSettingsModal, setShowParticipantSettingsModal] = useState(false);
+  // 회의 제목 인라인 수정
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState(meeting.title);
+  const [isSavingTitle, setIsSavingTitle] = useState(false);
   const [domains, setDomains] = useState<Domain[]>([]);
   const [selectedDomain, setSelectedDomain] = useState<number | null>(meeting.domain_id || null);
   const [isLoadingDomains, setIsLoadingDomains] = useState(false);
@@ -182,6 +186,8 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState, domainsVersion }
     setSttFailed(false);
     setIsProcessing(false);
     setRecoverable(null);
+    setIsEditingTitle(false);
+    setTitleDraft(meeting.title);
     stopPolling();
 
     // Android: 이 미팅에 이미 영구 보관된 로컬 녹음이 있는지 확인 (전체/단락 재생용)
@@ -338,6 +344,36 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState, domainsVersion }
     }
   };
 
+  const handleStartEditTitle = () => {
+    setTitleDraft(meeting.title);
+    setIsEditingTitle(true);
+  };
+
+  const handleCancelEditTitle = () => {
+    setIsEditingTitle(false);
+    setTitleDraft(meeting.title);
+  };
+
+  const handleSaveTitle = async () => {
+    const trimmed = titleDraft.trim();
+    if (!trimmed || trimmed === meeting.title) {
+      setIsEditingTitle(false);
+      setTitleDraft(meeting.title);
+      return;
+    }
+    setIsSavingTitle(true);
+    try {
+      await apiClient.put(`/api/meetings/${meeting.id}/title`, { title: trimmed });
+      setIsEditingTitle(false);
+      onUpdate();
+    } catch (error) {
+      console.error('Failed to update title:', error);
+      alert('회의 제목 변경에 실패했습니다');
+    } finally {
+      setIsSavingTitle(false);
+    }
+  };
+
   const handleDownloadAudio = async () => {
     try {
       const response = await apiClient.get(
@@ -485,7 +521,7 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState, domainsVersion }
     void uploadPending(pending);
   };
 
-  // 사용자가 직접 고른 WAV 파일 업로드 (영속화 불필요 — 이미 파일로 존재)
+  // 사용자가 직접 고른 음성 파일 업로드 (영속화 불필요 — 이미 파일로 존재)
   const handleFileUpload = async (file: File) => {
     try {
       await postAudio(file, meeting.id);
@@ -507,7 +543,44 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState, domainsVersion }
   return (
     <div className="meeting-detail" ref={detailRootRef}>
       <div className="detail-header">
-        <h1>{meeting.title}</h1>
+        {isEditingTitle ? (
+          <div className="title-edit-group">
+            <input
+              type="text"
+              className="title-edit-input"
+              value={titleDraft}
+              onChange={(e) => setTitleDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleSaveTitle();
+                if (e.key === 'Escape') handleCancelEditTitle();
+              }}
+              disabled={isSavingTitle}
+              autoFocus
+              maxLength={100}
+            />
+            <button
+              className="title-edit-confirm"
+              onClick={handleSaveTitle}
+              disabled={isSavingTitle}
+              title="저장"
+            >
+              ✓
+            </button>
+            <button
+              className="title-edit-cancel"
+              onClick={handleCancelEditTitle}
+              disabled={isSavingTitle}
+              title="취소"
+            >
+              ×
+            </button>
+          </div>
+        ) : (
+          <h1 className="editable-title" onClick={handleStartEditTitle} title="클릭하여 회의 제목 수정">
+            {meeting.title}
+            <span className="edit-title-icon">✏️</span>
+          </h1>
+        )}
         <div className="header-controls">
           <div className="domain-selector-group">
             <label htmlFor="domain-select">도메인:</label>
@@ -588,7 +661,7 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState, domainsVersion }
                   <input
                     type="file"
                     id="wav-upload"
-                    accept={isAndroid ? `.aac,${NATIVE_MIME_TYPE}` : '.wav,audio/wav'}
+                    accept={isAndroid ? `.aac,${NATIVE_MIME_TYPE}` : '.wav,.mp3,.m4a,.aac,.ogg,.flac,audio/*'}
                     onChange={(e) => {
                       const file = e.target.files?.[0];
                       if (file) {
@@ -600,7 +673,7 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState, domainsVersion }
                     disabled={isUploading}
                   />
                   <label htmlFor="wav-upload" className="upload-button" style={{ opacity: isUploading ? 0.5 : 1, cursor: isUploading ? 'not-allowed' : 'pointer' }}>
-                    {isAndroid ? '녹취 업로드' : 'WAV 파일 업로드'}
+                    {isAndroid ? '녹취 업로드' : '음성 파일 업로드'}
                   </label>
                   {typeof meeting.duration_ms === 'number' && meeting.duration_ms > 0 && (
                     <span className="recording-duration-badge" title="녹음 길이">

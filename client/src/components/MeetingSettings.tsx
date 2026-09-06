@@ -17,7 +17,6 @@ interface MeetingSettingsProps {
 }
 
 function MeetingSettings({ meeting, onUpdate }: MeetingSettingsProps) {
-  const [title, setTitle] = useState<string>(meeting.title);
   const [participants, setParticipants] = useState<string[]>(meeting.participants);
   const [isSaving, setIsSaving] = useState(false);
   const [newParticipantName, setNewParticipantName] = useState('');
@@ -42,13 +41,6 @@ function MeetingSettings({ meeting, onUpdate }: MeetingSettingsProps) {
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      // Update title if changed
-      if (title !== meeting.title) {
-        await apiClient.put(`/api/meetings/${meeting.id}/title`, {
-          title,
-        });
-      }
-
       // Update participants
       await apiClient.post(`/api/meetings/${meeting.id}/settings`, {
         participants,
@@ -66,19 +58,6 @@ function MeetingSettings({ meeting, onUpdate }: MeetingSettingsProps) {
 
   return (
     <div className="meeting-settings">
-      <div className="title-section">
-        <h4>회의 제목</h4>
-        <div className="title-edit">
-          <input
-            type="text"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            className="title-input"
-            placeholder="회의 제목"
-          />
-        </div>
-      </div>
-
       <div className="participants-section">
         <h4>참여자 목록 ({participants.length}명)</h4>
 

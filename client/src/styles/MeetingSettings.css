@@ -4,33 +4,6 @@
   gap: 16px;
 }
 
-.title-section h4 {
-  font-size: 14px;
-  font-weight: 600;
-  margin-bottom: 12px;
-  color: #333;
-}
-
-.title-edit {
-  display: flex;
-  gap: 8px;
-}
-
-.title-input {
-  flex: 1;
-  padding: 8px 12px;
-  border: 1px solid #d0d0d0;
-  border-radius: 4px;
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.title-input:focus {
-  outline: none;
-  border-color: #4a90e2;
-  box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.1);
-}
-
 .participants-section h4 {
   font-size: 14px;
   font-weight: 600;

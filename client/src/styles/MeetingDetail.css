@@ -26,6 +26,93 @@
   min-width: 200px;
 }
 
+.editable-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 4px 8px;
+  margin-left: -8px;
+  transition: background-color 0.2s;
+}
+
+.editable-title:hover {
+  background-color: #f5f5f5;
+}
+
+.edit-title-icon {
+  font-size: 16px;
+  opacity: 0.5;
+  flex-shrink: 0;
+}
+
+.editable-title:hover .edit-title-icon {
+  opacity: 1;
+}
+
+.title-edit-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 200px;
+}
+
+.title-edit-input {
+  flex: 1;
+  min-width: 0;
+  font-size: 24px;
+  font-weight: 700;
+  color: #333;
+  padding: 6px 10px;
+  border: 2px solid #2196f3;
+  border-radius: 6px;
+  font-family: inherit;
+}
+
+.title-edit-input:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(33, 150, 243, 0.15);
+}
+
+.title-edit-confirm,
+.title-edit-cancel {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 6px;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.title-edit-confirm {
+  background-color: #4caf50;
+  color: white;
+}
+
+.title-edit-confirm:hover:not(:disabled) {
+  background-color: #388e3c;
+}
+
+.title-edit-cancel {
+  background-color: #f0f0f0;
+  color: #666;
+}
+
+.title-edit-cancel:hover:not(:disabled) {
+  background-color: #e0e0e0;
+}
+
+.title-edit-confirm:disabled,
+.title-edit-cancel:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .header-controls {
   display: flex;
   align-items: center;
@@ -113,6 +200,19 @@
     margin: 0;
     min-width: 0;
     word-break: break-word;
+  }
+
+  .editable-title {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .title-edit-group {
+    width: 100%;
+  }
+
+  .title-edit-input {
+    font-size: 18px;
   }
 
   .header-controls {
