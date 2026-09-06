@@ -49,6 +49,7 @@ def process_audio_transcription(meeting_id: str) -> None:
         wav_path = RECORDS_DIR / f"meeting_{meeting_id}_{timestamp}.wav"
         audio = AudioSegment.from_file(source_path)
         audio.export(str(wav_path), format="wav")
+        duration_ms = len(audio)
 
         # 2) 도메인 키워드 부스팅
         domain_keywords = get_domain_keywords(domain_id) if domain_id else None
@@ -65,7 +66,7 @@ def process_audio_transcription(meeting_id: str) -> None:
             update_meeting_settings(meeting_id, speaker_names)
         transcript_data = [seg.model_dump() for seg in segments]
         update_transcript(meeting_id, transcript_data)
-        add_audio_file(meeting_id, str(wav_path))
+        add_audio_file(meeting_id, str(wav_path), duration_ms=duration_ms)
 
         # 5) 완료 처리 + 원본 정리
         set_transcription_status(meeting_id, "done", clear_source=True)

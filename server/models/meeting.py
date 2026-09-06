@@ -47,6 +47,8 @@ class Meeting(BaseModel):
     domain_id: Optional[int] = None  # References DomainKeywords.id
     # STT 변환 상태: 'processing' | 'done' | 'failed' | None(미처리)
     transcription_status: Optional[str] = None
+    # 녹음 파일의 실제 길이(밀리초). STT 변환 완료 전에는 None.
+    duration_ms: Optional[int] = None
 
 
 class MeetingListResponse(BaseModel):

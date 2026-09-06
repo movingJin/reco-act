@@ -51,6 +51,9 @@ class Meeting(Base):
     # 변환 대기 중인 원본 업로드 파일 경로. 백그라운드 STT 도중 서버가 재시작돼도
     # 기동 시 이 경로로 재처리(re-queue)할 수 있게 보관하고, 완료 후 비운다.
     source_audio_path = Column(String, nullable=True)
+    # 녹음 파일의 실제 길이(밀리초). STT 변환 시 pydub으로 오디오를 로드하는
+    # 김에 함께 구해서 저장한다(회의 화면에 "녹음 길이"로 표시).
+    duration_ms = Column(Integer, nullable=True)
 
     user = relationship("User", back_populates="meetings")
 

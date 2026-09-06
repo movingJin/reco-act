@@ -45,7 +45,20 @@ interface Meeting {
   audio_files: string[];
   domain_id?: number;
   transcription_status?: 'processing' | 'done' | 'failed' | null;
+  duration_ms?: number | null;
 }
+
+// 녹음 길이(ms)를 "12:34" 또는 "1:02:34" 형태로 표시한다.
+const formatDuration = (ms: number): string => {
+  const totalSeconds = Math.floor(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  }
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
+};
 
 // STT 변환 상태 폴링 주기
 const POLL_INTERVAL_MS = 4000;
@@ -589,6 +602,11 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState, domainsVersion }
                   <label htmlFor="wav-upload" className="upload-button" style={{ opacity: isUploading ? 0.5 : 1, cursor: isUploading ? 'not-allowed' : 'pointer' }}>
                     {isAndroid ? '녹취 업로드' : 'WAV 파일 업로드'}
                   </label>
+                  {typeof meeting.duration_ms === 'number' && meeting.duration_ms > 0 && (
+                    <span className="recording-duration-badge" title="녹음 길이">
+                      ⏱ {formatDuration(meeting.duration_ms)}
+                    </span>
+                  )}
                   {isAndroid ? (
                     localRecordingSrc && (
                       <button

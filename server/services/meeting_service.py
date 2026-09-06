@@ -44,6 +44,7 @@ def db_meeting_to_model(db_meeting: DBMeeting, db_transcripts: List[DBTranscript
         subject=db_meeting.subject,
         domain_id=db_meeting.domain_id,
         transcription_status=db_meeting.transcription_status,
+        duration_ms=db_meeting.duration_ms,
     )
 
 
@@ -222,8 +223,8 @@ def update_transcript(meeting_id: str, transcript: List[Dict[str, Any]]) -> Opti
         db.close()
 
 
-def add_audio_file(meeting_id: str, audio_file_path: str) -> Optional[Meeting]:
-    """Set the audio file for a meeting."""
+def add_audio_file(meeting_id: str, audio_file_path: str, duration_ms: Optional[int] = None) -> Optional[Meeting]:
+    """Set the audio file(및 길이)를 설정한다."""
     db = get_db()
     try:
         db_meeting = db.query(DBMeeting).filter(DBMeeting.id == meeting_id).first()
@@ -231,6 +232,8 @@ def add_audio_file(meeting_id: str, audio_file_path: str) -> Optional[Meeting]:
             return None
 
         db_meeting.audio_file = audio_file_path
+        if duration_ms is not None:
+            db_meeting.duration_ms = duration_ms
         db.commit()
 
         db_transcripts = db.query(DBTranscript).filter(DBTranscript.meeting_id == meeting_id).all()
