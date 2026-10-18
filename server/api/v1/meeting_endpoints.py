@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Depends, BackgroundTasks
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Depends
 from fastapi.responses import FileResponse, StreamingResponse
 from pathlib import Path
 from datetime import datetime
@@ -26,7 +26,7 @@ from services.meeting_service import (
     update_meeting_domain,
     set_transcription_status,
 )
-from services.transcription_service import process_audio_transcription
+from services.job_service import enqueue_job
 from utils.config import RECORDS_DIR
 from utils.auth import get_current_user
 from database import get_db, User, Meeting as DBMeeting
@@ -85,7 +85,6 @@ async def update_settings(meeting_id: str, request: MeetingSettingsRequest, curr
 @router.post("/api/meetings/{meeting_id}/upload-audio", response_model=UploadAudioResponse, status_code=202)
 async def upload_audio(
     meeting_id: str,
-    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     keep_server_copy: bool = Form(True),
     current_user: User = Depends(get_current_user),
@@ -111,7 +110,7 @@ async def upload_audio(
 
     try:
         # 원본 업로드 파일을 디스크에 스트리밍 저장한다(메모리에 전체를 올리지 않음).
-        # 변환(ffmpeg)·STT는 백그라운드에서 수행하므로 여기서는 저장만 한다.
+        # 변환(ffmpeg)·STT는 워커가 수행하므로 여기서는 저장만 한다.
         UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
         timestamp = int(datetime.now().timestamp() * 1000)
         suffix = Path(file.filename or "upload").suffix or ".dat"
@@ -130,8 +129,8 @@ async def upload_audio(
             set_source=True,
         )
 
-        # 응답 전송 후 백그라운드에서 변환 수행 (동기 함수 → threadpool 실행)
-        background_tasks.add_task(process_audio_transcription, meeting_id)
+        # 변환은 워커(python -m worker)가 실행한다. 같은 회의의 대기 작업이 있으면 그 작업이 최신 원본을 처리한다.
+        enqueue_job(meeting_id, "transcribe")
 
         return UploadAudioResponse(
             status="processing",

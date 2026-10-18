@@ -37,9 +37,7 @@ app.add_middleware(
 @app.on_event("startup")
 def startup_event():
     init_db()
-    # 변환 도중 서버가 재시작돼 'processing'으로 멈춘 미팅을 백그라운드에서 재처리
-    from services.transcription_service import requeue_stuck_transcriptions
-    requeue_stuck_transcriptions()
+    # 전사·요약은 워커(python -m worker)가 실행한다. 멈춘 작업 복구도 워커가 맡는다.
 
 app.include_router(api_router)
 if __name__ == "__main__":

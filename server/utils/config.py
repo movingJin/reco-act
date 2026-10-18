@@ -83,6 +83,35 @@ def parse_stt_provider(value: Optional[str], app_profile: str) -> str:
 
 STT_PROVIDER = parse_stt_provider(os.getenv("STT_PROVIDER"), APP_PROFILE)
 
+# ==================== 작업 실행 (워커) ====================
+# 전사·요약은 두 프로파일 모두 작업 큐 + 워커 프로세스(python -m worker)가 실행한다(00-decisions 2.1, 01-plan 3.5).
+
+
+def parse_worker_concurrency(value: Optional[str], app_profile: str) -> int:
+    """WORKER_CONCURRENCY(워커 프로세스 하나의 동시 작업 수)를 검증한다. 미설정이면 public 4, airgap 1.
+
+    public은 외부 API(Clova, Azure) 응답을 기다리는 시간이 대부분이라 여러 건을 동시에 처리한다.
+    airgap은 GPU 1장을 순차로 쓰므로 2 이상이면 예외로 기동을 멈춘다(00-decisions 2.1).
+    """
+    if value is None:
+        return 4 if app_profile == "public" else 1
+    try:
+        concurrency = int(value)
+    except ValueError:
+        raise ValueError(f"Invalid WORKER_CONCURRENCY={value!r}. Use a positive integer")
+    if concurrency < 1:
+        raise ValueError(f"Invalid WORKER_CONCURRENCY={value!r}. Use a positive integer")
+    if concurrency > 1 and app_profile == "airgap":
+        raise ValueError("WORKER_CONCURRENCY must be 1 with APP_PROFILE=airgap (single GPU)")
+    return concurrency
+
+
+WORKER_CONCURRENCY = parse_worker_concurrency(os.getenv("WORKER_CONCURRENCY"), APP_PROFILE)
+
+# 요약·회의록 재생성 요청이 작업 완료를 기다리는 최대 시간(초, 01-plan 3.7). 넘기면 오류 응답을 주고 작업은 계속 돈다.
+# public은 nginx proxy_read_timeout(600s)보다 짧게 둔다.
+SUMMARY_WAIT_TIMEOUT = float(os.getenv("SUMMARY_WAIT_TIMEOUT") or (540 if APP_PROFILE == "public" else 1500))
+
 # ==================== 메일(SMTP) ====================
 # 회원가입 인증코드, 비밀번호 재설정, 회의록 메일이 모두 이 설정을 쓴다(00-decisions 2.7).
 # public 기본값은 현행 Gmail(465, SSL)과 같다. airgap은 설치할 때 그 망의 사내 메일 서버를 지정한다.

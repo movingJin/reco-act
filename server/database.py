@@ -1,7 +1,8 @@
 import os
 from pathlib import Path
 from dotenv import load_dotenv
-from sqlalchemy import create_engine, Column, String, DateTime, TIMESTAMP, Integer, Float, Text, ARRAY, ForeignKey, Boolean
+from sqlalchemy import create_engine, Column, String, DateTime, TIMESTAMP, Integer, Float, Text, ARRAY, ForeignKey, Boolean, Index
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from datetime import datetime
@@ -95,6 +96,34 @@ class DomainKeywords(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     domain_name = Column(String)
     keywords = Column(ARRAY(String))
+
+
+class ProcessingJob(Base):
+    """처리 작업 기록(01-plan 3.5). 두 프로파일이 같이 쓴다.
+
+    airgap 워커가 이 테이블을 큐로 쓴다(SELECT ... FOR UPDATE SKIP LOCKED). 새 테이블이라 create_all로 생기며 수동 ALTER가 필요 없다.
+    kind: transcribe | summarize | regenerate_notes / status: queued | running | done | failed
+    """
+    __tablename__ = "processing_jobs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    meeting_id = Column(String, ForeignKey("meetings.id", ondelete="CASCADE"), nullable=False, index=True)
+    kind = Column(String, nullable=False)
+    stage = Column(String, nullable=True)  # 실행 중인 단계(normalize, stt, ...). 상태 표시와 장애 분석용
+    status = Column(String, nullable=False, default="queued")
+    priority = Column(Integer, nullable=False, default=0)  # 클수록 먼저 꺼낸다
+    attempts = Column(Integer, nullable=False, default=0)
+    max_attempts = Column(Integer, nullable=False, default=3)
+    error = Column(Text, nullable=True)
+    params = Column(JSONB, nullable=True)
+    created_at = Column(TIMESTAMP, nullable=False, default=datetime.utcnow)
+    started_at = Column(TIMESTAMP, nullable=True)
+    heartbeat_at = Column(TIMESTAMP, nullable=True)
+    finished_at = Column(TIMESTAMP, nullable=True)
+    locked_by = Column(String, nullable=True)  # 작업을 잡은 워커(호스트:pid)
+
+    # 큐에서 다음 작업을 꺼내는 조회(status='queued', 우선순위·등록순)
+    __table_args__ = (Index("ix_processing_jobs_queue", "status", "priority", "id"),)
 
 
 def init_db():

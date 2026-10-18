@@ -199,7 +199,7 @@ def transcription_env(tmp_path, monkeypatch):
 
 
 def test_public_transcription_through_clova_adapter(fake_clova, transcription_env):
-    transcription_service.process_audio_transcription(MEETING_ID)
+    transcription_service.transcribe_meeting(MEETING_ID)
 
     (request,) = fake_clova.requests
     assert request["params"]["boostings"] == [{"words": "검색엔진, 벡터DB", "weight": 1.0}]
@@ -221,15 +221,18 @@ def test_public_transcription_through_clova_adapter(fake_clova, transcription_en
 def test_airgap_transcription_never_calls_clova(fake_clova, transcription_env, reload_config, stt_provider):
     """Clova 접속 정보가 있어도 airgap은 Clova를 부르지 않는다.
 
-    기본값 faster_whisper(PR-7 전)와 화자를 주지 않는 mock은 화자분리가 없는 이 경로에서 실패로 끝난다.
+    기본값 faster_whisper(PR-7 전)와 화자를 주지 않는 mock은 화자분리가 없는 이 경로에서 예외로 끝난다.
+    실패 상태 기록은 워커가 맡는다(test_worker).
     """
     env = {"APP_PROFILE": "airgap"}
     if stt_provider:
         env["STT_PROVIDER"] = stt_provider
     reload_config(**env)
 
-    transcription_service.process_audio_transcription(MEETING_ID)
+    expected = NotImplementedError if stt_provider is None else RuntimeError
+    with pytest.raises(expected):
+        transcription_service.transcribe_meeting(MEETING_ID)
 
     assert fake_clova.requests == []
-    assert transcription_env.calls == [("set_transcription_status", (MEETING_ID, "failed"), {})]
+    assert transcription_env.calls == []  # 아무것도 저장하지 않는다
     assert transcription_env.source.exists()  # 다시 처리할 수 있게 원본은 남긴다

@@ -17,6 +17,7 @@ services:
     build:
       context: ./server
       dockerfile: Dockerfile
+    image: reco-act-server
     ports:
       - "8000:8000"
     container_name: reco-act-server
@@ -38,6 +39,34 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+
+  # 전사·요약 작업을 실행하는 워커(00-decisions 2.1). server와 같은 이미지·볼륨·env를 쓴다.
+  # 업로드는 server가 records에 저장하고 워커가 같은 경로에서 읽으므로 records 마운트가 같아야 한다.
+  worker:
+    image: reco-act-server
+    command: ["python", "-m", "worker"]
+    container_name: reco-act-worker
+    restart: unless-stopped
+    volumes:
+      - ./server/records:/app/records
+    environment:
+      - PYTHONPATH=/workspace
+      - PYTHONUNBUFFERED=1
+      - ENVIRONMENT=prod
+      - TZ=Asia/Seoul
+      # 동시 처리 수. 0번 자리는 요약 전용이라 전사는 최대 3건이 동시에 돈다(전사는 음원 전체를 메모리에 올린다).
+      - WORKER_CONCURRENCY=4
+    networks:
+      - app-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # 이미지의 HEALTHCHECK는 API(8000)를 확인하므로 워커에서는 끈다.
+    healthcheck:
+      disable: true
+    # server가 먼저 떠서 init_db로 새 테이블을 만든 뒤 시작한다.
+    depends_on:
+      server:
+        condition: service_healthy
 
 networks:
   app-network:
