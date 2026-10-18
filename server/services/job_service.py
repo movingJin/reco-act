@@ -101,6 +101,27 @@ def find_active_job(meeting_id: str, kind: str) -> Optional[int]:
         db.close()
 
 
+def latest_job(meeting_id: str, kind: str) -> Optional[ProcessingJob]:
+    """같은 회의·종류의 대표 작업. 실행 중 → 대기 중 → 가장 최근 순으로 고른다. 없으면 None."""
+    db = SessionLocal()
+    try:
+        job = (
+            db.query(ProcessingJob)
+            .filter(ProcessingJob.meeting_id == meeting_id, ProcessingJob.kind == kind)
+            .order_by(
+                (ProcessingJob.status == RUNNING).desc(),
+                (ProcessingJob.status == QUEUED).desc(),
+                ProcessingJob.id.desc(),
+            )
+            .first()
+        )
+        if job is not None:
+            db.expunge(job)
+        return job
+    finally:
+        db.close()
+
+
 def claim_next_job(worker_id: str, kinds: Optional[Iterable[str]] = None) -> Optional[ProcessingJob]:
     """queued 작업 하나를 잡아 running으로 바꾼다. 없으면 None.
 

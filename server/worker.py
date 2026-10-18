@@ -7,6 +7,7 @@ processing_jobs에서 작업을 꺼내 kind별 핸들러를 실행한다. 한 �
 - 실행 중에는 별도 스레드가 heartbeat를 갱신한다. 워커가 죽으면 heartbeat가 끊긴 작업을 회수해 이어서 처리한다.
 - 일시 오류는 max_attempts까지 다시 시도하고, 입력 오류 등은 바로 failed로 둔다. 사유는 작업의 error에 남는다.
 - 전사 작업이 최종 실패하면 meetings.transcription_status='failed'로 둔다(기존 클라이언트 계약 유지).
+- 전사가 끝나면 SUMMARY_AUTO일 때 같은 회의의 요약 작업을 넣는다(자동 요약).
 - SIGTERM을 받으면 새 작업을 꺼내지 않고, 실행 중인 작업을 shutdown_grace초 기다린 뒤 끝나지 않은 것은 큐에 돌려주고 끝난다.
   compose down은 SIGTERM 후 10초 뒤 강제 종료하므로, 돌려준 작업은 새 워커가 바로 이어서 처리한다.
 """
@@ -21,6 +22,7 @@ from database import ProcessingJob, init_db
 from services import job_service
 from services.summary_service import create_summary, regenerate_meeting_notes
 from services.transcription_service import enqueue_orphaned_transcriptions, transcribe_meeting
+from utils import config
 
 # 핸들러는 (job, 단계 기록 함수)를 받고, 실패하면 예외를 올린다.
 JobHandler = Callable[[ProcessingJob, Callable[[str], None]], None]
@@ -28,7 +30,11 @@ JobHandler = Callable[[ProcessingJob, Callable[[str], None]], None]
 
 def _handle_transcribe(job: ProcessingJob, on_stage: Callable[[str], None]) -> None:
     # 화자분리·병합(PR-6)과 용어 보정(PR-9)이 붙으면 단계가 늘어난다.
-    transcribe_meeting(job.meeting_id, on_stage)
+    saved = transcribe_meeting(job.meeting_id, on_stage)
+    # 전사가 끝나면 요약을 이어서 실행한다(00-decisions 2.1). 같은 회의의 작업은 차례로 돌므로 이 전사 작업이 끝난 뒤에 꺼내진다.
+    # 인식된 말이 없으면(무음 등) 요약할 내용이 없어 넣지 않는다.
+    if config.SUMMARY_AUTO and saved:
+        job_service.enqueue_job(job.meeting_id, "summarize")
 
 
 def _handle_summarize(job: ProcessingJob, on_stage: Callable[[str], None]) -> None:
@@ -171,8 +177,6 @@ class Worker:
 
 
 def main() -> None:
-    from utils import config
-
     init_db()
     worker = Worker(concurrency=config.WORKER_CONCURRENCY)
     signal.signal(signal.SIGTERM, lambda *_: worker.stop())

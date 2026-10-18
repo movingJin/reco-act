@@ -32,9 +32,9 @@ class SourceAudioMissing(Exception):
     """처리할 원본 오디오가 DB에 없거나 디스크에 없다. 다시 시도해도 같다."""
 
 
-def transcribe_meeting(meeting_id: str, on_stage: Optional[Callable[[str], None]] = None) -> None:
+def transcribe_meeting(meeting_id: str, on_stage: Optional[Callable[[str], None]] = None) -> int:
     """meetings.source_audio_path의 원본을 WAV로 변환 후 STT를 수행하고,
-    transcript/participants/audio_file/status를 갱신한다. 실패하면 예외를 올린다(상태는 건드리지 않음).
+    transcript/participants/audio_file/status를 갱신하고 저장한 세그먼트 수를 돌려준다. 실패하면 예외를 올린다(상태는 건드리지 않음).
 
     워커가 transcribe 작업으로 호출한다. 실패 시 상태 처리(재시도, failed)는 워커가 맡는다.
     on_stage는 단계(normalize, stt, save)가 시작될 때 불린다. 워커가 작업 기록에 남긴다.
@@ -95,6 +95,8 @@ def transcribe_meeting(meeting_id: str, on_stage: Optional[Callable[[str], None]
         except Exception as e:
             print(f"[transcription] failed to remove wav {wav_path}: {e}")
         clear_audio_file(meeting_id)
+
+    return len(segments)
 
 
 def enqueue_orphaned_transcriptions() -> list[str]:

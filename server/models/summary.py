@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List, Optional, Dict, Any
+from typing import List, Literal, Optional, Dict, Any
 from datetime import datetime
 
 
@@ -37,3 +37,12 @@ class SummaryResponse(BaseModel):
     next_steps: List[str]
     subject: Optional[str] = None
     meeting_notes: Optional[str] = None
+
+
+class SummaryStatusResponse(BaseModel):
+    """요약 진행 상태(01-plan 3.7). 자동 요약 진행 표시에서 폴링한다.
+
+    none: 요약 없음 / queued·running: 생성 중 / done: 생성됨 / failed: 마지막 생성이 실패함(error에 사유)
+    """
+    status: Literal["none", "queued", "running", "done", "failed"]
+    error: Optional[str] = None

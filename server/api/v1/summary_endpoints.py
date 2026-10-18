@@ -7,6 +7,7 @@ from starlette.concurrency import run_in_threadpool
 
 from models.summary import (
     SummaryResponse,
+    SummaryStatusResponse,
     UpdateParagraphRequest,
     UpdateNextStepRequest,
     UpdateMeetingNotesRequest,
@@ -72,6 +73,19 @@ async def get_summary(meeting_id: str, current_user: User = Depends(get_current_
     if not summary:
         raise HTTPException(status_code=404, detail="Summary not found")
     return summary
+
+
+@router.get("/api/summary/{meeting_id}/status", response_model=SummaryStatusResponse)
+async def get_summary_status(meeting_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """요약 진행 상태. 자동 요약이 도는 동안 화면이 폴링한다."""
+    verify_meeting_ownership(meeting_id, current_user.email, db)
+    job = await run_in_threadpool(job_service.latest_job, meeting_id, "summarize")
+    if job is not None:
+        return SummaryStatusResponse(status=job.status, error=job.error if job.status == job_service.FAILED else None)
+    # 작업 기록이 없는 회의(이 기능 이전에 만든 요약 포함): 저장된 요약이 있으면 done
+    summary = await run_in_threadpool(load_summary, meeting_id)
+    has_summary = summary is not None and bool(summary.paragraphs or summary.subject)
+    return SummaryStatusResponse(status="done" if has_summary else "none")
 
 
 @router.post("/api/summary/{meeting_id}", response_model=SummaryResponse)

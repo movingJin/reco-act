@@ -534,6 +534,38 @@
         "title": "SummaryResponse",
         "type": "object"
       },
+      "SummaryStatusResponse": {
+        "description": "요약 진행 상태(01-plan 3.7). 자동 요약 진행 표시에서 폴링한다.\n\nnone: 요약 없음 / queued·running: 생성 중 / done: 생성됨 / failed: 마지막 생성이 실패함(error에 사유)",
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "status": {
+            "enum": [
+              "none",
+              "queued",
+              "running",
+              "done",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "SummaryStatusResponse",
+        "type": "object"
+      },
       "TranscriptRequest": {
         "properties": {
           "transcript": {
@@ -2592,6 +2624,54 @@
           }
         ],
         "summary": "Update Paragraph Endpoint",
+        "tags": [
+          "summary"
+        ]
+      }
+    },
+    "/api/summary/{meeting_id}/status": {
+      "get": {
+        "description": "요약 진행 상태. 자동 요약이 도는 동안 화면이 폴링한다.",
+        "operationId": "get_summary_status_api_summary__meeting_id__status_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "meeting_id",
+            "required": true,
+            "schema": {
+              "title": "Meeting Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SummaryStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Summary Status",
         "tags": [
           "summary"
         ]

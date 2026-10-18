@@ -112,6 +112,10 @@ WORKER_CONCURRENCY = parse_worker_concurrency(os.getenv("WORKER_CONCURRENCY"), A
 # public은 nginx proxy_read_timeout(600s)보다 짧게 둔다.
 SUMMARY_WAIT_TIMEOUT = float(os.getenv("SUMMARY_WAIT_TIMEOUT") or (540 if APP_PROFILE == "public" else 1500))
 
+# 전사가 끝나면 요약 작업을 자동으로 넣을지(00-decisions 2.1, 두 프로파일 기본 true). 운영 중 끌 수 있는 스위치다(Azure 비용 등).
+# 꺼도 사용자가 "AI요약"을 누르면 요약은 만들어진다.
+SUMMARY_AUTO = parse_bool_env("SUMMARY_AUTO", os.getenv("SUMMARY_AUTO"), default=True)
+
 # ==================== 메일(SMTP) ====================
 # 회원가입 인증코드, 비밀번호 재설정, 회의록 메일이 모두 이 설정을 쓴다(00-decisions 2.7).
 # public 기본값은 현행 Gmail(465, SSL)과 같다. airgap은 설치할 때 그 망의 사내 메일 서버를 지정한다.
