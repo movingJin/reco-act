@@ -13,7 +13,8 @@ interface Meeting {
 
 interface MeetingSettingsProps {
   meeting: Meeting;
-  onUpdate: () => void;
+  // 저장 후 호출. participantsChanged: 저장한 참여자 목록이 기존과 다른지
+  onUpdate: (participantsChanged: boolean) => void;
 }
 
 function MeetingSettings({ meeting, onUpdate }: MeetingSettingsProps) {
@@ -45,8 +46,11 @@ function MeetingSettings({ meeting, onUpdate }: MeetingSettingsProps) {
       await apiClient.post(`/api/meetings/${meeting.id}/settings`, {
         participants,
       });
-      
-      onUpdate();
+
+      const participantsChanged =
+        participants.length !== meeting.participants.length ||
+        participants.some((name, i) => name !== meeting.participants[i]);
+      onUpdate(participantsChanged);
       alert('회의 설정이 저장되었습니다');
     } catch (error) {
       console.error('Failed to save settings:', error);

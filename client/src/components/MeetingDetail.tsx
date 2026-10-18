@@ -103,6 +103,9 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState, domainsVersion }
   const summarySectionRef = useRef<HTMLDivElement>(null);
   const [jumpVisible, setJumpVisible] = useState(false);
   const [jumpToSummary, setJumpToSummary] = useState(true);
+  // SummaryPanel에 넘기는 신호: STT 완료(자동 요약 진행 조회), 참여자 이름 변경(회의록 재생성 안내)
+  const [transcriptionDoneSignal, setTranscriptionDoneSignal] = useState(0);
+  const [participantsChangedSignal, setParticipantsChangedSignal] = useState(0);
 
   // Android 백버튼으로 참여자 설정 모달 닫기
   useModalBackButton(showParticipantSettingsModal, () => setShowParticipantSettingsModal(false));
@@ -140,7 +143,10 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState, domainsVersion }
       const status = res.data.transcription_status as Meeting['transcription_status'];
 
       if (status === 'done') {
-        if (target.meetingId === meeting.id) setTranscript(res.data.transcript || []);
+        if (target.meetingId === meeting.id) {
+          setTranscript(res.data.transcript || []);
+          setTranscriptionDoneSignal((n) => n + 1);
+        }
         if (target.pending) await finalizeLocalRecording(target.pending);
         setRecoverable(null);
         setIsProcessing(false);
@@ -757,6 +763,8 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState, domainsVersion }
         <div className="summary-section-wrapper" ref={summarySectionRef}>
           <SummaryPanel
             meetingId={meeting.id}
+            transcriptionDoneSignal={transcriptionDoneSignal}
+            participantsChangedSignal={participantsChangedSignal}
             canPlayLocally={isAndroid && !!localRecordingSrc}
             playingParagraphId={activeSegment?.id ?? null}
             onToggleParagraphPlayback={handleToggleParagraphPlayback}
@@ -792,8 +800,9 @@ function MeetingDetail({ meeting, onUpdate, onSetRecorderState, domainsVersion }
             <div className="modal-body">
               <MeetingSettings 
                 meeting={meeting} 
-                onUpdate={() => {
+                onUpdate={(participantsChanged) => {
                   setShowParticipantSettingsModal(false);
+                  if (participantsChanged) setParticipantsChangedSignal((n) => n + 1);
                   onUpdate();
                 }}
               />

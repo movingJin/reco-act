@@ -637,6 +637,98 @@
   font-weight: 600;
 }
 
+/* 요약 진행·실패 표시와 회의록 재생성 안내 (헤더 아래) */
+.summary-status-area {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 20px 0;
+  flex-shrink: 0;
+}
+
+.summary-status-banner {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 12px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.summary-status-banner.generating {
+  background-color: #e3f2fd;
+  border: 1px solid #bbdefb;
+  color: #1565c0;
+}
+
+.summary-status-banner.failed {
+  background-color: #ffebee;
+  border: 1px solid #ffcdd2;
+  color: #c62828;
+}
+
+.summary-status-banner.notice {
+  background-color: #fff8e1;
+  border: 1px solid #ffd54f;
+  color: #8a6d00;
+}
+
+.summary-status-text {
+  flex: 1;
+  min-width: 180px;
+}
+
+.summary-status-spinner {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border: 3px solid #bbdefb;
+  border-top-color: #2196f3;
+  border-radius: 50%;
+  animation: summaryStatusSpin 1s linear infinite;
+}
+
+@keyframes summaryStatusSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.summary-status-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.summary-status-btn {
+  padding: 6px 12px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.summary-status-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.summary-status-dismiss {
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 20px;
+  line-height: 1;
+  padding: 0 4px;
+  cursor: pointer;
+}
+
 /* 모바일: 헤더의 제목과 버튼이 좁은 화면에서 겹치지 않도록 줄바꿈 */
 @media (max-width: 767px) {
   .summary-panel {
@@ -673,6 +765,10 @@
   .summary-content {
     padding: 14px;
     gap: 14px;
+  }
+
+  .summary-status-area {
+    padding: 14px 14px 0;
   }
 
   .summary-section {

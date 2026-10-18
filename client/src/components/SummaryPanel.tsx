@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import axios from 'axios';
 import { apiClient } from '../api/authApi';
 import { saveAndShare } from '../utils/download';
 import '../styles/SummaryPanel.css';
@@ -19,8 +20,27 @@ interface SummaryData {
   meeting_notes: string | null;
 }
 
+// 서버의 요약 진행 상태 (GET /api/summary/{id}/status)
+type SummaryStatus = 'none' | 'queued' | 'running' | 'done' | 'failed';
+
+interface SummaryStatusData {
+  status: SummaryStatus;
+  error: string | null;
+}
+
+// 요약 진행 상태 폴링 주기 (STT 상태 폴링과 같은 간격)
+const STATUS_POLL_INTERVAL_MS = 4000;
+
+const REGENERATE_NOTES_CONFIRM = '현재 회의록 내용을 새로 생성한 내용으로 교체합니다. 진행할까요?';
+
+const isGenerating = (status: SummaryStatus | null) => status === 'queued' || status === 'running';
+
 interface SummaryPanelProps {
   meetingId: string;
+  // MeetingDetail이 STT 완료를 확인할 때마다 올리는 값. 바뀌면 자동 요약 진행 상태를 조회한다.
+  transcriptionDoneSignal?: number;
+  // 사용자가 참여자 이름을 바꿔 저장할 때마다 올리는 값. 바뀌면 회의록 재생성을 안내한다.
+  participantsChangedSignal?: number;
   // Android 전용: 기기에 영구 보관된 녹취가 있어 로컬 재생이 가능한지 여부.
   // false면(웹/과거 미팅 등) 단락 재생 버튼 자체를 노출하지 않는다.
   canPlayLocally?: boolean;
@@ -31,6 +51,8 @@ interface SummaryPanelProps {
 
 function SummaryPanel({
   meetingId,
+  transcriptionDoneSignal = 0,
+  participantsChangedSignal = 0,
   canPlayLocally,
   playingParagraphId = null,
   onToggleParagraphPlayback,
@@ -49,38 +71,180 @@ function SummaryPanel({
   const [meetingNotesText, setMeetingNotesText] = useState('');
   const [isSavingNotes, setIsSavingNotes] = useState(false);
   const [isRegeneratingNotes, setIsRegeneratingNotes] = useState(false);
+  const [summaryStatus, setSummaryStatus] = useState<SummaryStatus | null>(null);
+  // 참여자 이름을 바꾼 뒤 회의록 재생성 안내
+  const [showNotesHint, setShowNotesHint] = useState(false);
+  // 화면에 떠 있는 회의. 회의를 바꾼 뒤 늦게 도착한 응답을 버리는 데 쓴다.
+  const currentMeetingRef = useRef(meetingId);
+  // 요약 상태 폴링 제어. 폴링을 시작하거나 멈출 때마다 run을 올려 이전 폴링의 늦은 응답을 버린다.
+  const statusTimerRef = useRef<number | null>(null);
+  const statusTargetRef = useRef<string | null>(null);
+  const statusRunRef = useRef(0);
+  // 진행 중이거나 곧 시작될 요약을 지켜보는 중인지. 지켜보다 끝나면 요약을 다시 불러온다.
+  const watchingRef = useRef(false);
+  // 생성 중이 아닌 상태가 와도 다시 확인할 남은 횟수 (STT 완료 직후용)
+  const graceChecksRef = useRef(0);
+  const lastTranscriptionSignalRef = useRef(transcriptionDoneSignal);
+  const lastParticipantsSignalRef = useRef(participantsChangedSignal);
 
-  // Load summary on mount
+  // 회의 변경/진입 시: 요약을 불러오고 진행 상태를 한 번 조회한다(자동 요약이 도는 중이면 폴링).
   useEffect(() => {
-    loadSummary();
+    currentMeetingRef.current = meetingId;
+    setSummaryStatus(null);
+    setShowNotesHint(false);
+    setIsLoading(false);
+    loadSummary(meetingId);
+    startStatusPolling(meetingId);
+    return () => stopStatusPolling();
   }, [meetingId]);
 
-  const loadSummary = async () => {
+  // STT 완료 직후: 자동 요약 작업이 들어오므로 진행 상태를 지켜본다.
+  // 워커는 전사 완료를 기록한 다음에 요약 작업을 넣어서, 그 사이에 조회하면 작업이 아직 없다. 그래서 한 번 더 확인한다.
+  useEffect(() => {
+    if (transcriptionDoneSignal === lastTranscriptionSignalRef.current) return;
+    lastTranscriptionSignalRef.current = transcriptionDoneSignal;
+    startStatusPolling(meetingId, { watch: true, graceChecks: 1 });
+  }, [transcriptionDoneSignal]);
+
+  useEffect(() => {
+    if (participantsChangedSignal === lastParticipantsSignalRef.current) return;
+    lastParticipantsSignalRef.current = participantsChangedSignal;
+    setShowNotesHint(true);
+  }, [participantsChangedSignal]);
+
+  // 앱이 다시 포그라운드로 돌아오면 기다리던 상태 조회를 바로 한다 (대기시간 단축)
+  useEffect(() => {
+    const onVisible = () => {
+      const target = statusTargetRef.current;
+      if (document.visibilityState === 'visible' && target && statusTimerRef.current) {
+        clearTimeout(statusTimerRef.current);
+        statusTimerRef.current = null;
+        void pollStatus(target, statusRunRef.current);
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, []);
+
+  const applySummary = (data: SummaryData) => {
+    setSummary(data);
+    setSubjectText(data.subject || '');
+    setNextStepsText(data.next_steps || []);
+    setMeetingNotesText(data.meeting_notes || '');
+  };
+
+  // 요약이 새로 생성되면 이전 요약을 편집하던 상태와 회의록 재생성 안내를 정리한다.
+  const resetEditing = () => {
+    setEditingSubject(false);
+    setEditingNextSteps(false);
+    setEditingParagraph(null);
+    setParagraphEdits({});
+    setShowNotesHint(false);
+  };
+
+  const loadSummary = async (id: string) => {
     try {
-      const response = await apiClient.get(`/api/summary/${meetingId}`);
-      setSummary(response.data);
-      setSubjectText(response.data.subject || '');
-      setNextStepsText(response.data.next_steps || []);
-      setMeetingNotesText(response.data.meeting_notes || '');
+      const response = await apiClient.get(`/api/summary/${id}`);
+      if (currentMeetingRef.current !== id) return;
+      applySummary(response.data);
     } catch (error) {
       // Summary might not exist yet
       console.log('Summary not found, create new one');
     }
   };
 
-  const handleGenerateSummary = async () => {
-    setIsLoading(true);
+  const stopStatusPolling = () => {
+    statusRunRef.current += 1;
+    if (statusTimerRef.current) {
+      clearTimeout(statusTimerRef.current);
+      statusTimerRef.current = null;
+    }
+    statusTargetRef.current = null;
+  };
+
+  const startStatusPolling = (id: string, { watch = false, graceChecks = 0 } = {}) => {
+    stopStatusPolling();
+    statusTargetRef.current = id;
+    watchingRef.current = watch;
+    graceChecksRef.current = graceChecks;
+    void pollStatus(id, statusRunRef.current);
+  };
+
+  // 요약 진행 상태를 한 번 조회하고, 생성 중이면 다음 조회를 예약한다.
+  const pollStatus = async (id: string, run: number) => {
+    statusTimerRef.current = null;
+    const scheduleNext = () => {
+      statusTimerRef.current = window.setTimeout(() => pollStatus(id, run), STATUS_POLL_INTERVAL_MS);
+    };
+
+    let data: SummaryStatusData;
     try {
-      const response = await apiClient.post(`/api/summary/${meetingId}`);
-      setSummary(response.data);
-      setSubjectText(response.data.subject || '');
-      setNextStepsText(response.data.next_steps || []);
-      setMeetingNotesText(response.data.meeting_notes || '');
+      const res = await apiClient.get<SummaryStatusData>(`/api/summary/${id}/status`);
+      data = res.data;
     } catch (error) {
+      if (run !== statusRunRef.current) return;
+      if (watchingRef.current) {
+        // 일시적 오류(화면 꺼짐 등) → 잠시 후 재시도
+        console.error('Summary status polling failed, will retry:', error);
+        scheduleNext();
+      } else {
+        console.error('Failed to load summary status:', error);
+        stopStatusPolling();
+      }
+      return;
+    }
+    if (run !== statusRunRef.current) return;
+
+    if (isGenerating(data.status)) {
+      watchingRef.current = true;
+      graceChecksRef.current = 0;
+      setSummaryStatus(data.status);
+      scheduleNext();
+      return;
+    }
+    if (graceChecksRef.current > 0) {
+      graceChecksRef.current -= 1;
+      scheduleNext();
+      return;
+    }
+
+    const wasWatching = watchingRef.current;
+    stopStatusPolling();
+    setSummaryStatus(data.status);
+    if (data.status === 'failed') {
+      console.warn('Summary generation failed:', data.error);
+    }
+    if (wasWatching && data.status === 'done') {
+      resetEditing();
+      await loadSummary(id);
+    }
+  };
+
+  const handleGenerateSummary = async () => {
+    const id = meetingId;
+    stopStatusPolling();
+    setIsLoading(true);
+    // 서버가 요약 작업을 기다리는 동안 진행 표시를 보여준다.
+    setSummaryStatus('queued');
+    try {
+      const response = await apiClient.post(`/api/summary/${id}`);
+      if (currentMeetingRef.current !== id) return;
+      resetEditing();
+      applySummary(response.data);
+      setSummaryStatus('done');
+    } catch (error) {
+      if (currentMeetingRef.current !== id) return;
+      if (axios.isAxiosError(error) && (!error.response || error.response.status === 504)) {
+        // 응답을 못 받았거나 서버의 대기 시간을 넘겼다. 작업은 서버에서 계속 도니 상태 폴링으로 끝을 기다린다.
+        startStatusPolling(id, { watch: true });
+        return;
+      }
       console.error('Failed to generate summary:', error);
       alert('요약 생성에 실패했습니다');
+      // 실패 표시를 서버 상태와 맞춘다
+      startStatusPolling(id);
     } finally {
-      setIsLoading(false);
+      if (currentMeetingRef.current === id) setIsLoading(false);
     }
   };
 
@@ -212,9 +376,22 @@ function SummaryPanel({
 
   // 기존 요약은 그대로 두고 회의록 본문만 다시 생성한다.
   const handleRegenerateNotes = async () => {
-    if (!window.confirm('현재 회의록 내용을 새로 생성한 내용으로 교체합니다. 진행할까요?')) {
+    if (!window.confirm(REGENERATE_NOTES_CONFIRM)) {
       return;
     }
+    await regenerateNotes();
+  };
+
+  // 참여자 이름 변경 안내에서 재생성: 결과를 바로 볼 수 있게 회의록 미리보기를 연다.
+  const handleRegenerateNotesFromHint = async () => {
+    if (!window.confirm(REGENERATE_NOTES_CONFIRM)) {
+      return;
+    }
+    openNotesPreview();
+    await regenerateNotes();
+  };
+
+  const regenerateNotes = async () => {
     setIsRegeneratingNotes(true);
     try {
       const response = await apiClient.post(
@@ -222,6 +399,7 @@ function SummaryPanel({
       );
       setSummary(response.data);
       setMeetingNotesText(response.data.meeting_notes || '');
+      setShowNotesHint(false);
     } catch (error) {
       console.error('Failed to regenerate meeting notes:', error);
       alert('회의록 재생성에 실패했습니다');
@@ -270,6 +448,28 @@ function SummaryPanel({
     return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
   };
 
+  // 자동 요약이 도는 중이거나 사용자가 요청한 요약을 기다리는 중
+  const isBusy = isLoading || isGenerating(summaryStatus);
+
+  // 요약 진행·실패 표시. 실패 사유(서버 내부 메시지)는 화면에 내지 않고 콘솔에만 남긴다.
+  const statusBanner = isGenerating(summaryStatus) ? (
+    <div className="summary-status-banner generating">
+      <div className="summary-status-spinner"></div>
+      <span className="summary-status-text">AI 요약을 생성하고 있습니다. 완료되면 자동으로 표시됩니다.</span>
+    </div>
+  ) : summaryStatus === 'failed' ? (
+    <div className="summary-status-banner failed">
+      <span className="summary-status-text">⚠️ AI 요약 생성에 실패했습니다. 다시 생성해 주세요.</span>
+      <button
+        className="summary-status-btn"
+        onClick={handleGenerateSummary}
+        disabled={isBusy}
+      >
+        다시 생성
+      </button>
+    </div>
+  ) : null;
+
   if (!summary) {
     return (
       <div className="summary-panel">
@@ -278,18 +478,44 @@ function SummaryPanel({
           <button
             className="generate-summary-btn"
             onClick={handleGenerateSummary}
-            disabled={isLoading}
+            disabled={isBusy}
           >
-            {isLoading ? '생성 중...' : 'AI요약'}
+            {isBusy ? '생성 중...' : 'AI요약'}
           </button>
         </div>
+        {statusBanner && <div className="summary-status-area">{statusBanner}</div>}
         <div className="summary-placeholder">
           <p>아직 생성된 요약이 없습니다.</p>
-          <p>위의 "AI요약" 버튼을 클릭하여 요약을 생성해주세요.</p>
+          {!isBusy && <p>위의 "AI요약" 버튼을 클릭하여 요약을 생성해주세요.</p>}
         </div>
       </div>
     );
   }
+
+  const notesHint = showNotesHint && !!summary.meeting_notes && !isBusy ? (
+    <div className="summary-status-banner notice">
+      <span className="summary-status-text">
+        참여자 이름이 바뀌었습니다. 회의록의 참석자에 반영하려면 회의록을 다시 생성해 주세요.
+      </span>
+      <div className="summary-status-actions">
+        <button
+          className="summary-status-btn"
+          onClick={handleRegenerateNotesFromHint}
+          disabled={isRegeneratingNotes}
+        >
+          {isRegeneratingNotes ? '재생성 중...' : '🔄 회의록 재생성'}
+        </button>
+        <button
+          className="summary-status-dismiss"
+          onClick={() => setShowNotesHint(false)}
+          title="닫기"
+          aria-label="안내 닫기"
+        >
+          ×
+        </button>
+      </div>
+    </div>
+  ) : null;
 
   return (
     <div className="summary-panel">
@@ -331,12 +557,19 @@ function SummaryPanel({
           <button
             className="generate-summary-btn"
             onClick={handleGenerateSummary}
-            disabled={isLoading}
+            disabled={isBusy}
           >
-            {isLoading ? '생성 중...' : 'AI요약'}
+            {isBusy ? '생성 중...' : 'AI요약'}
           </button>
         </div>
       </div>
+
+      {(statusBanner || notesHint) && (
+        <div className="summary-status-area">
+          {statusBanner}
+          {notesHint}
+        </div>
+      )}
 
       <div className="summary-content">
         {/* Subject Section */}
