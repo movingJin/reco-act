@@ -9,8 +9,11 @@ def get_stt_provider() -> SttProvider:
     if name == "clova":
         from stt.clova import ClovaSttProvider
         return ClovaSttProvider()
+    if name == "faster_whisper":
+        from stt.faster_whisper import FasterWhisperSttProvider
+        return FasterWhisperSttProvider()
     if name == "mock":
         from stt.mock import MockSttProvider
         return MockSttProvider()
-    # faster_whisper는 PR-7, qwen3_asr는 PR-17에서 추가한다.
+    # qwen3_asr는 PR-17에서 추가한다.
     raise NotImplementedError(f"STT_PROVIDER={name} is not implemented yet")

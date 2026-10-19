@@ -1,0 +1,9 @@
+# airgap 전용 의존성 (01-plan 3.1). public 이미지(requirements.txt)에는 넣지 않는다.
+# 엔진 패키지는 프로바이더 안에서만 import하므로 public 서버·워커는 이 파일 없이 동작한다.
+-r requirements.txt
+
+# STT: faster-whisper (MIT) + CTranslate2 (MIT). VAD 모델(silero onnx)은 패키지에 들어 있다.
+faster-whisper==1.2.1
+ctranslate2==4.8.3
+# 최신(2.x)은 anyio를 4로 올려 public(anyio 3.7)과 버전이 갈린다. 1 미만으로 고정한다(2026-10-19 확인).
+huggingface_hub==0.36.2

@@ -83,6 +83,24 @@ def parse_stt_provider(value: Optional[str], app_profile: str) -> str:
 
 STT_PROVIDER = parse_stt_provider(os.getenv("STT_PROVIDER"), APP_PROFILE)
 
+# faster-whisper(airgap). 모델(CTranslate2 변환본)은 로컬 디렉터리에서만 읽는다(00-decisions 3장).
+STT_DEVICES = ("cuda", "cpu")
+
+
+def parse_stt_device(value: Optional[str]) -> str:
+    """STT_DEVICE 값을 검증한다. 미설정이면 cuda(운영 GPU). GPU가 없는 개발 PC는 cpu."""
+    if value is None:
+        return "cuda"
+    if value not in STT_DEVICES:
+        raise ValueError(f"Invalid STT_DEVICE={value!r}. Use one of: {', '.join(STT_DEVICES)}")
+    return value
+
+
+WHISPER_MODEL_PATH = os.getenv("WHISPER_MODEL_PATH") or "/models/faster-whisper-large-v3"
+STT_DEVICE = parse_stt_device(os.getenv("STT_DEVICE"))
+# CTranslate2 계산 정밀도. 미설정이면 cuda는 float16, cpu는 int8. 지원하지 않는 값이면 모델을 올릴 때 실패한다.
+STT_COMPUTE_TYPE = os.getenv("STT_COMPUTE_TYPE") or ("float16" if STT_DEVICE == "cuda" else "int8")
+
 # ==================== 화자분리 ====================
 # 단어 타임스탬프만 주는 STT 엔진의 결과에 화자를 붙인다(01-plan 3.3). public은 Clova가 화자까지 주므로 쓰지 않는다.
 DIARIZERS = ("pyannote", "mock")
