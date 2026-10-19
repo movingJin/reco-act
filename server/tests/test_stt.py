@@ -16,6 +16,7 @@ from pydub import AudioSegment
 
 import clova_stt
 from models.meeting import TranscriptSegment
+from pipeline.audio import AudioDecodeError
 from services import transcription_service
 from stt.base import SttHints
 from stt.clova import ClovaSttProvider
@@ -221,7 +222,7 @@ def test_public_transcription_through_clova_adapter(fake_clova, transcription_en
 def test_airgap_transcription_never_calls_clova(fake_clova, transcription_env, reload_config, stt_provider):
     """Clova 접속 정보가 있어도 airgap은 Clova를 부르지 않는다.
 
-    기본값 faster_whisper(PR-7 전)와 화자를 주지 않는 mock은 화자분리가 없는 이 경로에서 예외로 끝난다.
+    기본값 faster_whisper(PR-7 전)는 STT에서, mock(단어만 줌)은 기본 화자분리 pyannote(PR-8 전)에서 예외로 끝난다.
     실패 상태 기록은 워커가 맡는다(test_worker).
     """
     env = {"APP_PROFILE": "airgap"}
@@ -229,10 +230,64 @@ def test_airgap_transcription_never_calls_clova(fake_clova, transcription_env, r
         env["STT_PROVIDER"] = stt_provider
     reload_config(**env)
 
-    expected = NotImplementedError if stt_provider is None else RuntimeError
-    with pytest.raises(expected):
+    match = "STT_PROVIDER=faster_whisper" if stt_provider is None else "DIARIZER=pyannote"
+    with pytest.raises(NotImplementedError, match=match):
         transcription_service.transcribe_meeting(MEETING_ID)
 
     assert fake_clova.requests == []
     assert transcription_env.calls == []  # 아무것도 저장하지 않는다
     assert transcription_env.source.exists()  # 다시 처리할 수 있게 원본은 남긴다
+
+
+def test_airgap_words_engine_is_diarized_and_merged(fake_clova, transcription_env, reload_config):
+    """airgap: ffmpeg 16kHz mono 정규화 → 단어만 주는 STT(mock) → 화자분리(mock) → 병합 → 기존 저장 경로."""
+    reload_config(APP_PROFILE="airgap", STT_PROVIDER="mock", DIARIZER="mock")
+    stages = []
+
+    saved = transcription_service.transcribe_meeting(MEETING_ID, stages.append)
+
+    assert saved == 2
+    assert stages == ["normalize", "stt", "diarize", "merge", "save"]
+    assert fake_clova.requests == []
+
+    settings, transcript, audio, status = transcription_env.calls
+    assert settings == ("update_meeting_settings", (MEETING_ID, ["화자1", "화자2"]), {})
+    assert transcript == ("update_transcript", (MEETING_ID, [
+        {"speaker_index": 0, "text": "안녕하세요. 오늘은 검색 개편을 논의합니다.", "start": 0, "end": 3400},
+        {"speaker_index": 1, "text": "네, 일정부터 정하죠.", "start": 4200, "end": 6100},
+    ]), {})
+
+    name, (meeting_id, wav_path), kwargs = audio
+    assert (name, meeting_id, kwargs) == ("add_audio_file", MEETING_ID, {"duration_ms": 1500})
+    assert Path(wav_path).parent == transcription_env.records
+    stored = AudioSegment.from_file(wav_path)  # 재생용 파일도 정규화한 mono 16kHz다
+    assert (stored.channels, stored.frame_rate, len(stored)) == (1, 16000, 1500)
+
+    assert status == ("set_transcription_status", (MEETING_ID, "done"), {"clear_source": True})
+    assert not transcription_env.source.exists()
+
+
+def test_words_engine_without_diarizer_fails(transcription_env, reload_config):
+    """화자분리를 고르지 않은 채(public 기본) 단어만 주는 엔진을 쓰면 저장하지 않고 예외로 끝난다."""
+    reload_config(STT_PROVIDER="mock")
+
+    with pytest.raises(RuntimeError, match="returned no speaker segments and DIARIZER is not set"):
+        transcription_service.transcribe_meeting(MEETING_ID)
+
+    assert transcription_env.calls == []
+    assert transcription_env.source.exists()
+
+
+def test_airgap_undecodable_audio_fails_before_stt(transcription_env, reload_config, monkeypatch):
+    reload_config(APP_PROFILE="airgap", STT_PROVIDER="mock", DIARIZER="mock")
+    transcription_env.source.write_bytes(b"not audio at all")
+    monkeypatch.setattr(transcription_service, "get_stt_provider", lambda: pytest.fail("STT must not run"))
+    stages = []
+
+    with pytest.raises(AudioDecodeError):
+        transcription_service.transcribe_meeting(MEETING_ID, stages.append)
+
+    assert stages == ["normalize"]
+    assert transcription_env.calls == []
+    assert list(transcription_env.records.iterdir()) == []  # 반쯤 쓴 WAV를 남기지 않는다
+    assert transcription_env.source.exists()

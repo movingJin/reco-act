@@ -29,7 +29,7 @@ JobHandler = Callable[[ProcessingJob, Callable[[str], None]], None]
 
 
 def _handle_transcribe(job: ProcessingJob, on_stage: Callable[[str], None]) -> None:
-    # 화자분리·병합(PR-6)과 용어 보정(PR-9)이 붙으면 단계가 늘어난다.
+    # 용어 보정(PR-9)이 붙으면 단계가 늘어난다.
     saved = transcribe_meeting(job.meeting_id, on_stage)
     # 전사가 끝나면 요약을 이어서 실행한다(00-decisions 2.1). 같은 회의의 작업은 차례로 돌므로 이 전사 작업이 끝난 뒤에 꺼내진다.
     # 인식된 말이 없으면(무음 등) 요약할 내용이 없어 넣지 않는다.

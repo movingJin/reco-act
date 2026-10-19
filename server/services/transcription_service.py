@@ -1,7 +1,9 @@
 """STT 처리.
 
-업로드 엔드포인트는 원본 파일만 저장하고 transcribe 작업을 넣은 뒤 즉시 202로 응답한다. 실제 변환(ffmpeg
-정규화 + STT 프로바이더, public은 Clova)은 워커(python -m worker)가 transcribe_meeting으로 수행한다.
+업로드 엔드포인트는 원본 파일만 저장하고 transcribe 작업을 넣은 뒤 즉시 202로 응답한다. 실제 변환은
+워커(python -m worker)가 transcribe_meeting으로 수행한다.
+- public: pydub WAV 변환 → STT(Clova, 화자 포함) → 저장
+- airgap: ffmpeg mono 16kHz 정규화 → STT(단어 타임스탬프) → 화자분리 → 병합 → 저장 (01-plan 3.3)
 진행 상태는 meetings.transcription_status 컬럼에 기록되어 프론트가 폴링으로 확인한다.
 
 워커가 변환 도중 죽어도 작업 기록과 source_audio_path가 DB에 남아 있어 다시 처리할 수 있다.
@@ -23,8 +25,12 @@ from services.meeting_service import (
     get_pending_transcription,
 )
 from services.job_service import enqueue_job
+from diarization.factory import get_diarizer
+from pipeline.audio import normalize_audio
+from pipeline.merge import merge_words_and_turns
 from stt.base import SttHints
 from stt.factory import get_stt_provider
+from utils import config
 from utils.config import RECORDS_DIR
 
 
@@ -37,7 +43,8 @@ def transcribe_meeting(meeting_id: str, on_stage: Optional[Callable[[str], None]
     transcript/participants/audio_file/status를 갱신하고 저장한 세그먼트 수를 돌려준다. 실패하면 예외를 올린다(상태는 건드리지 않음).
 
     워커가 transcribe 작업으로 호출한다. 실패 시 상태 처리(재시도, failed)는 워커가 맡는다.
-    on_stage는 단계(normalize, stt, save)가 시작될 때 불린다. 워커가 작업 기록에 남긴다.
+    on_stage는 단계(normalize, stt, [diarize, merge], save)가 시작될 때 불린다. 워커가 작업 기록에 남긴다.
+    diarize와 merge는 STT 엔진이 화자를 주지 않을 때(airgap)만 거친다.
     """
     stage = on_stage or (lambda name: None)
     source_path, domain_id = get_pending_transcription(meeting_id)
@@ -49,14 +56,19 @@ def transcribe_meeting(meeting_id: str, on_stage: Optional[Callable[[str], None]
     # 워커가 작업을 다시 처리할 때도 동일하게 동작).
     keep_server_copy = "_nokeep" not in Path(source_path).name
 
-    # 1) WAV 정규화 (모바일은 aac/m4a로 녹음 → Clova는 WAV 기대)
+    # 1) WAV 정규화
     stage("normalize")
     RECORDS_DIR.mkdir(parents=True, exist_ok=True)
     timestamp = int(datetime.now().timestamp() * 1000)
     wav_path = RECORDS_DIR / f"meeting_{meeting_id}_{timestamp}.wav"
-    audio = AudioSegment.from_file(source_path)
-    audio.export(str(wav_path), format="wav")
-    duration_ms = len(audio)
+    if config.APP_PROFILE == "airgap":
+        # STT·화자분리 입력과 재생용으로 함께 쓰는 mono 16kHz WAV. 디코딩할 수 없으면 재시도 없이 실패한다.
+        duration_ms = normalize_audio(source_path, str(wav_path))
+    else:
+        # 모바일은 aac/m4a로 녹음 → Clova는 WAV 기대. 샘플레이트·채널은 원본 그대로 둔다.
+        audio = AudioSegment.from_file(source_path)
+        audio.export(str(wav_path), format="wav")
+        duration_ms = len(audio)
 
     # 2) 도메인 키워드 부스팅
     domain_keywords = get_domain_keywords(domain_id) if domain_id else None
@@ -68,10 +80,18 @@ def transcribe_meeting(meeting_id: str, on_stage: Optional[Callable[[str], None]
         language="ko-KR",
         hints=SttHints(keywords=domain_keywords or []),
     )
-    # 이 경로에는 화자분리 단계가 없어서 화자까지 주는 엔진(Clova)만 쓸 수 있다.
-    if result.segments is None:
-        raise RuntimeError(f"STT provider {result.engine} returned no speaker segments")
-    segments, speaker_names = result.segments, result.speaker_names
+    if result.segments is not None:
+        # 화자까지 주는 엔진(Clova)
+        segments, speaker_names = result.segments, result.speaker_names
+    else:
+        # 단어만 주는 엔진은 화자분리 구간과 합쳐 세그먼트를 만든다(01-plan 3.3).
+        diarizer = get_diarizer()
+        if diarizer is None:
+            raise RuntimeError(f"STT provider {result.engine} returned no speaker segments and DIARIZER is not set")
+        stage("diarize")
+        turns = diarizer.diarize(str(wav_path))
+        stage("merge")
+        segments, speaker_names = merge_words_and_turns(result.words, turns)
 
     # 4) 인식된 화자 수에 맞춰 참가자 갱신 후 transcript 저장
     stage("save")

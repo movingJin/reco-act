@@ -83,6 +83,22 @@ def parse_stt_provider(value: Optional[str], app_profile: str) -> str:
 
 STT_PROVIDER = parse_stt_provider(os.getenv("STT_PROVIDER"), APP_PROFILE)
 
+# ==================== 화자분리 ====================
+# 단어 타임스탬프만 주는 STT 엔진의 결과에 화자를 붙인다(01-plan 3.3). public은 Clova가 화자까지 주므로 쓰지 않는다.
+DIARIZERS = ("pyannote", "mock")
+
+
+def parse_diarizer(value: Optional[str], app_profile: str) -> Optional[str]:
+    """DIARIZER 값을 검증한다. 미설정이면 public은 None(사용 안 함), airgap은 pyannote."""
+    if value is None:
+        return None if app_profile == "public" else "pyannote"
+    if value not in DIARIZERS:
+        raise ValueError(f"Invalid DIARIZER={value!r}. Use one of: {', '.join(DIARIZERS)}")
+    return value
+
+
+DIARIZER = parse_diarizer(os.getenv("DIARIZER"), APP_PROFILE)
+
 # ==================== 작업 실행 (워커) ====================
 # 전사·요약은 두 프로파일 모두 작업 큐 + 워커 프로세스(python -m worker)가 실행한다(00-decisions 2.1, 01-plan 3.5).
 

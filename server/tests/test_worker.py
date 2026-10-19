@@ -616,8 +616,8 @@ def test_public_default_provider_without_clova_credentials_fails_job(uploaded_me
     assert uploaded_meeting.source.exists()
 
 
-def test_words_only_engine_fails_until_diarization_exists(uploaded_meeting, monkeypatch):
-    """mock처럼 단어만 주는 엔진은 화자분리·병합(PR-6)이 붙기 전까지 완료할 수 없다. 재시도하지 않고 실패로 둔다."""
+def test_words_only_engine_without_diarizer_fails_job(uploaded_meeting, monkeypatch):
+    """public 기본(화자분리 없음)에서 mock처럼 단어만 주는 엔진을 쓰면 완료할 수 없다. 재시도하지 않고 실패로 둔다."""
     from utils import config
     monkeypatch.setattr(config, "STT_PROVIDER", "mock")
     job_id = job_service.enqueue_job(uploaded_meeting.id, "transcribe")
@@ -627,6 +627,52 @@ def test_words_only_engine_fails_until_diarization_exists(uploaded_meeting, monk
     job = job_row(job_id)
     assert (job.status, job.attempts, job.stage) == ("failed", 1, "stt")
     assert "returned no speaker segments" in job.error
+    assert load_meeting(uploaded_meeting.id).transcription_status == "failed"
+    assert uploaded_meeting.source.exists()
+
+
+def test_airgap_mock_pipeline_transcribes_and_chains_summary(uploaded_meeting, monkeypatch):
+    """airgap mock 파이프라인(정규화 → STT → 화자분리 → 병합)이 끝까지 저장하고 자동 요약 작업을 넣는다."""
+    from utils import config
+    monkeypatch.setattr(config, "APP_PROFILE", "airgap")
+    monkeypatch.setattr(config, "STT_PROVIDER", "mock")
+    monkeypatch.setattr(config, "DIARIZER", "mock")
+    job_id = job_service.enqueue_job(uploaded_meeting.id, "transcribe")
+    stages = []
+    original = job_service.set_stage
+    monkeypatch.setattr(
+        job_service, "set_stage", lambda job_id, worker_id, stage: (stages.append(stage), original(job_id, worker_id, stage))
+    )
+
+    assert Worker(worker_id="w", poll_interval=0.01).run_once() is True
+
+    assert stages == ["normalize", "stt", "diarize", "merge", "save"]
+    assert job_row(job_id).status == "done"
+    meeting = load_meeting(uploaded_meeting.id)
+    assert meeting.transcription_status == "done"
+    assert meeting.participants == ["화자1", "화자2"]
+    assert [(s.speaker_index, s.speaker_name, s.text, s.start, s.end) for s in meeting.transcript] == [
+        (0, "화자1", "안녕하세요. 오늘은 검색 개편을 논의합니다.", 0, 3400),
+        (1, "화자2", "네, 일정부터 정하죠.", 4200, 6100),
+    ]
+    assert meeting.duration_ms == 1500 and len(meeting.audio_files) == 1
+    assert not uploaded_meeting.source.exists()
+    assert job_service.find_active_job(uploaded_meeting.id, "summarize") is not None
+
+
+def test_airgap_undecodable_audio_fails_job_without_retry(uploaded_meeting, monkeypatch):
+    from utils import config
+    monkeypatch.setattr(config, "APP_PROFILE", "airgap")
+    monkeypatch.setattr(config, "STT_PROVIDER", "mock")
+    monkeypatch.setattr(config, "DIARIZER", "mock")
+    uploaded_meeting.source.write_bytes(b"not audio at all")
+    job_id = job_service.enqueue_job(uploaded_meeting.id, "transcribe")
+
+    Worker(worker_id="w", poll_interval=0.01).run_once()
+
+    job = job_row(job_id)
+    assert (job.status, job.attempts, job.stage) == ("failed", 1, "normalize")
+    assert "AudioDecodeError" in job.error
     assert load_meeting(uploaded_meeting.id).transcription_status == "failed"
     assert uploaded_meeting.source.exists()
 
