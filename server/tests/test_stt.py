@@ -22,6 +22,7 @@ from stt.base import SttHints
 from stt.clova import ClovaSttProvider
 from stt.factory import get_stt_provider
 from stt.faster_whisper import WhisperModelNotFound
+from diarization.pyannote import PyannotePipelineNotFound
 from stt.mock import MOCK_WORDS, MockSttProvider
 from utils import config
 from utils.config import parse_stt_provider
@@ -223,15 +224,18 @@ def test_public_transcription_through_clova_adapter(fake_clova, transcription_en
 def test_airgap_transcription_never_calls_clova(fake_clova, transcription_env, reload_config, stt_provider):
     """Clova 접속 정보가 있어도 airgap은 Clova를 부르지 않는다.
 
-    기본값 faster_whisper는 모델 디렉터리(/models/...)가 없어 STT에서, mock(단어만 줌)은 기본 화자분리 pyannote(PR-8 전)에서
-    예외로 끝난다. 실패 상태 기록은 워커가 맡는다(test_worker).
+    기본값 faster_whisper는 모델 디렉터리(/models/...)가 없어 STT에서, mock(단어만 줌)은 기본 화자분리 pyannote의
+    파이프라인 디렉터리가 없어 화자분리에서 예외로 끝난다. 실패 상태 기록은 워커가 맡는다(test_worker).
     """
     env = {"APP_PROFILE": "airgap"}
     if stt_provider:
         env["STT_PROVIDER"] = stt_provider
     reload_config(**env)
 
-    expected = (WhisperModelNotFound, "WHISPER_MODEL_PATH") if stt_provider is None else (NotImplementedError, "DIARIZER=pyannote")
+    expected = (
+        (WhisperModelNotFound, "WHISPER_MODEL_PATH") if stt_provider is None
+        else (PyannotePipelineNotFound, "PYANNOTE_PIPELINE_PATH")
+    )
     with pytest.raises(expected[0], match=expected[1]):
         transcription_service.transcribe_meeting(MEETING_ID)
 

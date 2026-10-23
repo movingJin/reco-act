@@ -10,8 +10,10 @@ def get_diarizer() -> Optional[Diarizer]:
     name = config.DIARIZER
     if name is None:
         return None
+    if name == "pyannote":
+        from diarization.pyannote import PyannoteDiarizer
+        return PyannoteDiarizer()
     if name == "mock":
         from diarization.mock import MockDiarizer
         return MockDiarizer()
-    # pyannote는 PR-8에서 추가한다.
     raise NotImplementedError(f"DIARIZER={name} is not implemented yet")

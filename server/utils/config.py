@@ -117,6 +117,10 @@ def parse_diarizer(value: Optional[str], app_profile: str) -> Optional[str]:
 
 DIARIZER = parse_diarizer(os.getenv("DIARIZER"), APP_PROFILE)
 
+# pyannote speaker-diarization-community-1 파이프라인 디렉터리(config.yaml + segmentation/embedding/plda). 로컬 경로만 쓴다.
+# 장치는 STT와 같은 STT_DEVICE를 쓴다(GPU 1장).
+PYANNOTE_PIPELINE_PATH = os.getenv("PYANNOTE_PIPELINE_PATH") or "/models/speaker-diarization-community-1"
+
 # ==================== 작업 실행 (워커) ====================
 # 전사·요약은 두 프로파일 모두 작업 큐 + 워커 프로세스(python -m worker)가 실행한다(00-decisions 2.1, 01-plan 3.5).
 

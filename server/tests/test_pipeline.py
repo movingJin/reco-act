@@ -241,10 +241,6 @@ def test_factory_mock(reload_config):
     assert isinstance(get_diarizer(), MockDiarizer)
 
 
-def test_airgap_default_pyannote_is_not_implemented_yet(reload_config):
-    reload_config(APP_PROFILE="airgap")
-    with pytest.raises(NotImplementedError, match="DIARIZER=pyannote"):
-        get_diarizer()
 
 
 def test_mock_turns_cover_mock_words():

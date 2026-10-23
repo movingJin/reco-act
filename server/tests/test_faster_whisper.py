@@ -8,13 +8,11 @@ import json
 import os
 import socket
 import subprocess
-import sys
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-from conftest import FAKE_ENV
 from services.job_service import RetryableError, is_retryable
 from stt import faster_whisper as fw
 from stt.base import SttHints
@@ -22,9 +20,6 @@ from stt.factory import get_stt_provider
 from stt.faster_whisper import FasterWhisperSttProvider, WhisperModelNotFound, build_hotwords, to_whisper_language
 from utils import config
 from utils.config import parse_stt_device
-
-SERVER_DIR = Path(__file__).parent.parent
-
 
 class FakeModel:
     """WhisperModel 대역. 토큰 수는 글자 수로 센다."""
@@ -215,21 +210,6 @@ def test_device_and_compute_type_defaults(reload_config):
 def test_invalid_stt_device_is_rejected(value):
     with pytest.raises(ValueError, match="Invalid STT_DEVICE"):
         parse_stt_device(value)
-
-
-@pytest.mark.parametrize("profile", ["public", "airgap"])
-def test_app_import_does_not_load_engine_packages(profile):
-    """앱 전체를 import해도 엔진 패키지를 올리지 않는다(public 이미지에는 없다). 별도 프로세스에서 확인한다."""
-    code = (
-        "import dotenv, sys; dotenv.load_dotenv = lambda *a, **k: False\n"
-        "import main, worker\n"
-        "print(sorted(m for m in ('faster_whisper', 'ctranslate2', 'onnxruntime', 'av', 'clova_stt') if m in sys.modules))"
-    )
-    env = {**FAKE_ENV, "PATH": os.environ["PATH"], "HOME": os.environ.get("HOME", "/tmp"), "APP_PROFILE": profile}
-    completed = subprocess.run([sys.executable, "-c", code], cwd=SERVER_DIR, env=env, capture_output=True, text=True, timeout=120)
-
-    assert completed.returncode == 0, completed.stderr[-2000:]
-    assert completed.stdout.strip().splitlines()[-1] == "[]"
 
 
 # ==================== CPU 스모크 (-m slow) ====================

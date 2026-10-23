@@ -7,3 +7,11 @@ faster-whisper==1.2.1
 ctranslate2==4.8.3
 # 최신(2.x)은 anyio를 4로 올려 public(anyio 3.7)과 버전이 갈린다. 1 미만으로 고정한다(2026-10-19 확인).
 huggingface_hub==0.36.2
+
+# 화자분리: pyannote.audio 4.x (MIT, community-1 파이프라인이 4.x 필요). 모델은 CC-BY-4.0(NOTICE 필요, PR-16).
+# torch는 설치할 때 인덱스로 빌드를 고른다. 개발 PC(CPU): --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple
+# GPU 이미지는 CUDA 12.8 빌드(cu128 인덱스, RTX 5090)를 쓴다(PR-15). torchcodec은 pyannote가 요구해서 깔리지만, 어댑터는 파형을 메모리로 넘겨 쓰지 않는다.
+torch==2.8.0
+torchaudio==2.8.0
+torchcodec==0.7.0
+pyannote.audio==4.0.7
