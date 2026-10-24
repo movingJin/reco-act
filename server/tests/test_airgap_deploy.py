@@ -282,7 +282,9 @@ def test_sim_worker_runs_on_cpu_with_uploaded_models(sim):
     assert (env["STT_PROVIDER"], env["DIARIZER"], env["STT_DEVICE"], env["STT_COMPUTE_TYPE"]) == ("faster_whisper", "pyannote", "cpu", "int8")
     assert env["WHISPER_MODEL_PATH"] == "/models/${SIM_WHISPER_MODEL_DIR:-faster-whisper-small}"
     assert "./models:/models:ro" in worker["volumes"]
-    assert worker["cpus"] and worker["mem_limit"]  # public 서비스에 주는 영향을 줄인다
+    # public 서비스에 주는 영향을 줄인다. cpus(CFS 쿼터)는 Synology 커널이 지원하지 않아 상대 우선순위를 쓴다
+    assert worker["cpu_shares"] < 1024 and worker["mem_limit"]
+    assert "cpus" not in worker and "cpu_quota" not in worker
     assert "deploy" not in worker  # GPU 없음
 
 
