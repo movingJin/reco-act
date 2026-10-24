@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:airgap": "tsc -b && vite build --mode airgap && node scripts/check-airgap-dist.mjs",
+    "check:airgap-dist": "node scripts/check-airgap-dist.mjs",
     "preview": "vite preview",
     "build:mobile": "vite build --mode mobile && cap sync",
     "android": "vite build --mode mobile && cap sync android && cap open android",

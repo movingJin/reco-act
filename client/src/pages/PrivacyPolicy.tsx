@@ -87,29 +87,40 @@ export const PrivacyPolicy = () => {
 
         <section className="policy-section">
           <h2>5. 개인정보 처리의 위탁</h2>
-          <p>서비스는 원활한 서비스 제공을 위해 아래와 같이 개인정보 처리업무를 외부 업체에 위탁하고 있습니다.</p>
-          <table className="policy-table">
-            <thead>
-              <tr>
-                <th>수탁업체</th>
-                <th>위탁업무 내용</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>네이버클라우드 (CLOVA Speech)</td>
-                <td>회의 음성파일의 텍스트 변환(STT) 처리</td>
-              </tr>
-              <tr>
-                <td>Microsoft (Azure OpenAI)</td>
-                <td>전사 텍스트 기반 AI 회의 요약 생성</td>
-              </tr>
-            </tbody>
-          </table>
-          <p>
-            서비스는 위탁계약 체결 시 개인정보 보호법에 따라 위탁업무 수행목적 외 개인정보 처리금지, 기술적·관리적
-            보호조치, 재위탁 제한 등을 계약서 등을 통해 규정하고 있습니다.
-          </p>
+          {/* airgap(폐쇄망) 빌드는 모든 처리를 기관 내부 서버에서 하므로 위탁 항목을 내부 처리 문구로 바꾼다(01-plan 4.5).
+              빌드 시점 값이라 airgap 번들에는 아래 위탁사 문구가 들어가지 않는다. 장 번호는 그대로 둔다. */}
+          {import.meta.env.MODE === 'airgap' ? (
+            <p>
+              서비스는 개인정보 처리업무를 외부에 위탁하지 않습니다. 음성 인식(STT)과 AI 요약을 포함한 모든 처리는 기관
+              내부 서버에서 수행됩니다.
+            </p>
+          ) : (
+            <>
+              <p>서비스는 원활한 서비스 제공을 위해 아래와 같이 개인정보 처리업무를 외부 업체에 위탁하고 있습니다.</p>
+              <table className="policy-table">
+                <thead>
+                  <tr>
+                    <th>수탁업체</th>
+                    <th>위탁업무 내용</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>네이버클라우드 (CLOVA Speech)</td>
+                    <td>회의 음성파일의 텍스트 변환(STT) 처리</td>
+                  </tr>
+                  <tr>
+                    <td>Microsoft (Azure OpenAI)</td>
+                    <td>전사 텍스트 기반 AI 회의 요약 생성</td>
+                  </tr>
+                </tbody>
+              </table>
+              <p>
+                서비스는 위탁계약 체결 시 개인정보 보호법에 따라 위탁업무 수행목적 외 개인정보 처리금지, 기술적·관리적
+                보호조치, 재위탁 제한 등을 계약서 등을 통해 규정하고 있습니다.
+              </p>
+            </>
+          )}
         </section>
 
         <section className="policy-section">

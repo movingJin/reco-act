@@ -34,6 +34,9 @@ const RecordingService = registerPlugin<RecordingServicePlugin>('RecordingServic
 
 const isNative = Capacitor.isNativePlatform();
 const platform = Capacitor.getPlatform();
+// 브라우저는 HTTPS(또는 localhost)에서만 마이크를 허용한다. 폐쇄망을 HTTP로 접속하면 녹음 대신 안내를 보여 준다(01-plan 4.2).
+// public 웹은 항상 HTTPS이고 네이티브 앱은 secure context라 영향이 없다.
+const canRecordHere = isNative || window.isSecureContext;
 
 const RecorderControls = forwardRef<RecorderControlsHandle, RecorderControlsProps>(
   ({ meetingId, onRecordingComplete }, ref) => {
@@ -321,10 +324,15 @@ const RecorderControls = forwardRef<RecorderControlsHandle, RecorderControlsProp
 
   return (
     <div className="recorder-controls">
-      <div className="recording-timer">{formatTime(recordingTime)}</div>
+      {canRecordHere && <div className="recording-timer">{formatTime(recordingTime)}</div>}
 
       <div className="controls-buttons">
-        {!isRecording ? (
+        {!isRecording && !canRecordHere ? (
+          <p className="recording-unavailable">
+            이 주소(HTTP)에서는 브라우저가 마이크를 막아 녹음할 수 없습니다. HTTPS 주소로 접속하거나 음성 파일 업로드를
+            이용하세요.
+          </p>
+        ) : !isRecording ? (
           <button className="btn btn-primary" onClick={startRecording}>
             ▶️ 녹음 시작
           </button>

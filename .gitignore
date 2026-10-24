@@ -22,6 +22,7 @@ client/android/.idea/
 
 # Capacitor build outputs
 client/dist/
+client/dist-airgap/
 
 # TypeScript incremental build cache (tsc -b)
 *.tsbuildinfo

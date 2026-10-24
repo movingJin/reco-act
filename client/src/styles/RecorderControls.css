@@ -23,6 +23,19 @@
   justify-content: center;
 }
 
+/* HTTP 접속이라 녹음할 수 없을 때의 안내(01-plan 4.2) */
+.recording-unavailable {
+  margin: 0;
+  max-width: 420px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background-color: #fff3e0;
+  color: #8a5300;
+  font-size: 14px;
+  line-height: 1.5;
+  text-align: center;
+}
+
 .btn {
   padding: 12px 24px;
   border: none;
