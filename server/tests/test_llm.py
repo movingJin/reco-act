@@ -148,6 +148,10 @@ def test_airgap_vllm_request(fake_llm_server, synthetic_meeting, reload_config):
         # 구조화 출력은 with_structured_output 기본(json_schema, strict)을 그대로 쓴다
         assert body["response_format"]["type"] == "json_schema"
         assert body["response_format"]["json_schema"]["strict"] is True
+    # airgap 기본 요약은 map_reduce: 짧은 회의는 청크 하나라 요청 수는 같고, 전사는 압축 포맷으로 간다(PR-12)
+    paragraph_prompt = fake_llm_server.requests[0]["body"]["messages"][1]["content"]
+    assert "[0-7000] 화자1: 오늘은 사내 문서 검색 시스템 개편 일정과 역할을 정하려고 합니다." in paragraph_prompt
+    assert "TranscriptSegmentResponse" not in paragraph_prompt
 
 
 def test_airgap_openrouter_request(fake_llm_server, synthetic_meeting, reload_config):

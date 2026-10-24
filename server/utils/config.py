@@ -158,6 +158,39 @@ SUMMARY_WAIT_TIMEOUT = float(os.getenv("SUMMARY_WAIT_TIMEOUT") or (540 if APP_PR
 # 꺼도 사용자가 "AI요약"을 누르면 요약은 만들어진다.
 SUMMARY_AUTO = parse_bool_env("SUMMARY_AUTO", os.getenv("SUMMARY_AUTO"), default=True)
 
+# 요약 방식(01-plan 3.7). single은 전사 전체를 프롬프트 하나에 넣는 현행 방식이고, map_reduce는 전사를 압축 포맷으로 바꿔
+# 청크마다 문단을 만든 뒤 이어 붙인다(긴 회의가 Qwen3 컨텍스트를 넘지 않게).
+SUMMARY_STRATEGIES = ("single", "map_reduce")
+
+
+def parse_summary_strategy(value: Optional[str], app_profile: str) -> str:
+    """SUMMARY_STRATEGY 값을 검증한다. 미설정이면 public은 single(현행 프롬프트 그대로), airgap은 map_reduce."""
+    if value is None:
+        return "single" if app_profile == "public" else "map_reduce"
+    if value not in SUMMARY_STRATEGIES:
+        raise ValueError(f"Invalid SUMMARY_STRATEGY={value!r}. Use one of: {', '.join(SUMMARY_STRATEGIES)}")
+    return value
+
+
+def parse_positive_int(name: str, value: Optional[str], default: int) -> int:
+    """양의 정수 env를 읽는다. 미설정이면 default, 그 밖의 값이면 예외로 기동을 멈춘다."""
+    if value is None:
+        return default
+    try:
+        number = int(value)
+    except ValueError:
+        raise ValueError(f"Invalid {name}={value!r}. Use a positive integer")
+    if number < 1:
+        raise ValueError(f"Invalid {name}={value!r}. Use a positive integer")
+    return number
+
+
+SUMMARY_STRATEGY = parse_summary_strategy(os.getenv("SUMMARY_STRATEGY"), APP_PROFILE)
+# map_reduce 청크 하나에 넣는 전사 글자 수(압축 포맷 기준). 토큰은 글자 수로 보수적으로 잡는다.
+# Qwen3 토크나이저로 한국어 압축 포맷은 1글자 약 0.72토큰이라 12,000자는 약 8,700토큰이다(01-plan 9.5).
+# vLLM --max-model-len은 청크 + 지시문(약 900토큰) + 출력보다 커야 한다.
+SUMMARY_CHUNK_CHARS = parse_positive_int("SUMMARY_CHUNK_CHARS", os.getenv("SUMMARY_CHUNK_CHARS"), 12000)
+
 # ==================== 메일(SMTP) ====================
 # 회원가입 인증코드, 비밀번호 재설정, 회의록 메일이 모두 이 설정을 쓴다(00-decisions 2.7).
 # public 기본값은 현행 Gmail(465, SSL)과 같다. airgap은 설치할 때 그 망의 사내 메일 서버를 지정한다.

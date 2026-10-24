@@ -6,7 +6,9 @@ from langgraph.graph import StateGraph, END
 from openai import ContentFilterFinishReasonError, BadRequestError
 from pydantic import BaseModel, Field
 
+from graph.transcript_chunks import chunk_segments, format_segment
 from services.meeting_service import load_meeting
+from utils import config
 from utils.config import get_llm
 
 logger = logging.getLogger(__name__)
@@ -83,10 +85,42 @@ def create_paragraphs(state: NodeState) -> NodeState:
     state["current_step"] = "create_paragraphs"
     meeting_id = state["meeting_id"]
     meeting = load_meeting(meeting_id)
+    if config.SUMMARY_STRATEGY == "map_reduce":
+        state["paragraphs"] = _map_paragraphs(meeting)
+        return state
     prompt = f"""
     다음 회의록을 읽고, 문단을 생성해줘.
     {meeting.transcript}
     """
+    state["paragraphs"] = _request_paragraphs(prompt)
+    return state
+
+
+def _map_paragraphs(meeting) -> List[Dict[str, Any]]:
+    """map-reduce(airgap, 01-plan 3.7): 압축한 전사를 청크로 나눠 청크마다 문단을 만들고 시간순으로 이어 붙인다.
+
+    다음 두 노드(다음 할 일·주제, 회의록)는 이미 문단 목록을 입력으로 받으므로 그대로 reduce 단계가 된다.
+    짧은 회의는 청크가 하나라 문단 요청도 한 번이다. 문단 시간은 그 청크의 시간 범위 안으로 맞춘다.
+    """
+    chunks = chunk_segments(meeting.transcript, config.SUMMARY_CHUNK_CHARS)
+    paragraphs = []
+    for number, chunk in enumerate(chunks, 1):
+        part = f"전체 회의를 {len(chunks)}부분으로 나눈 것 중 {number}번째 부분이다.\n" if len(chunks) > 1 else ""
+        prompt = (
+            "다음 회의록을 읽고, 문단을 생성해줘.\n"
+            + part
+            + "각 줄은 \"[시작-끝] 화자: 발화\" 형식이고, 시간은 회의 시작부터의 밀리초다.\n"
+            + "\n".join(format_segment(segment) for segment in chunk)
+        )
+        low, high = min(segment.start for segment in chunk), max(segment.end for segment in chunk)
+        for paragraph in _request_paragraphs(prompt):
+            start = min(max(paragraph["start"], low), high)
+            paragraphs.append({**paragraph, "start": start, "end": min(max(paragraph["end"], start), high)})
+    return paragraphs
+
+
+def _request_paragraphs(prompt: str) -> List[Dict[str, Any]]:
+    """문단 생성을 요청한다. 지시문(시스템 메시지)은 두 방식이 같고 사용자 메시지(prompt)만 다르다."""
     messages = [
         SystemMessage(
             content=f"""
@@ -135,9 +169,7 @@ def create_paragraphs(state: NodeState) -> NodeState:
     structured_lld = creative_llm.with_structured_output(StructuredOutput)
     response = structured_lld.invoke(messages)
     paragraphs = [p.model_dump() for p in response.paragraphs]
-
-    state["paragraphs"] = paragraphs
-    return state
+    return paragraphs
 
 
 def organize_next_steps_and_subject(state: NodeState) -> NodeState:

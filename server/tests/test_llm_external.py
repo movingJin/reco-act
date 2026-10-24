@@ -68,6 +68,29 @@ def test_summary_workflow(openrouter, monkeypatch):
         assert 0 <= paragraph["start"] <= paragraph["end"] <= meeting.transcript[-1].end
 
 
+def test_summary_map_reduce_multiple_chunks(openrouter, monkeypatch):
+    """청크를 작게 잡아 합성 회의를 세 부분 이상으로 나눠도 문단이 시간순으로 그 범위 안에 나오고, 나머지 노드가 돈다(PR-12)."""
+    from graph.transcript_chunks import chunk_segments
+    from utils import config
+
+    meeting = make_synthetic_meeting()
+    monkeypatch.setattr(summary_workflow, "load_meeting", lambda meeting_id: meeting)
+    assert config.SUMMARY_STRATEGY == "map_reduce"  # airgap 기본값
+    monkeypatch.setattr(config, "SUMMARY_CHUNK_CHARS", 250)
+    chunks = chunk_segments(meeting.transcript, 250)
+    assert len(chunks) >= 3
+
+    result = SummaryNode().run(meeting.id)
+
+    assert result is not None and result.subject and result.next_steps and result.meeting_notes
+    assert len(result.paragraphs) >= len(chunks)  # 청크마다 문단이 하나 이상
+    starts = [p["start"] for p in result.paragraphs]
+    assert starts == sorted(starts)
+    for paragraph in result.paragraphs:
+        assert set(paragraph) == {"subject", "start", "end", "summary"}
+        assert 0 <= paragraph["start"] <= paragraph["end"] <= meeting.transcript[-1].end
+
+
 def test_term_correction(openrouter):
     """LLM 용어 보정(PR-9)이 용어만 고치고 나머지(말버릇, 고칠 것 없는 세그먼트)는 그대로 둔다. 합성 전사만 보낸다."""
     from models.meeting import TranscriptSegment
