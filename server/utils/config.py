@@ -244,6 +244,22 @@ LLM_BASE_URL = os.getenv("LLM_BASE_URL")
 LLM_MODEL = os.getenv("LLM_MODEL")
 LLM_API_KEY = os.getenv("LLM_API_KEY")  # 인증 없는 vLLM이면 아무 값(예: EMPTY)
 LLM_SERVING = parse_llm_serving(os.getenv("LLM_SERVING"))
+# 응답 최대 토큰. 미설정이면 넣지 않는다(vLLM은 남은 컨텍스트를 상한으로 쓴다).
+# OpenRouter는 이 값이 없으면 공급자의 최대 출력만큼 크레딧을 잡아 두어 키 한도가 작으면 402로 거부한다(01-plan 9.1). 모의 환경에서 쓴다.
+LLM_MAX_TOKENS = parse_positive_int("LLM_MAX_TOKENS", os.getenv("LLM_MAX_TOKENS"), 0) or None
+
+# Swagger UI 정적 파일(airgap). airgap API는 CDN 대신 이 디렉터리의 파일로 Swagger UI를 띄운다(main.py).
+# 이미지에는 빌드할 때 scripts/fetch_swagger_ui.py가 넣는다. 로컬 개발은 같은 스크립트를 한 번 실행한다.
+SWAGGER_UI_DIR = os.getenv("SWAGGER_UI_DIR") or str(Path(__file__).parent.parent / "static" / "swagger-ui")
+
+# ==================== airgap 기동 검사 ====================
+# AIRGAP_STRICT=1(airgap 기본)이면 API와 워커가 기동할 때 외부 호출 0 조건을 확인하고 하나라도 어기면 멈춘다
+# (01-plan 3.1, utils/airgap_check.py). 개발 중 OpenRouter처럼 외부 LLM을 쓸 때만 0으로 끈다. public에서는 쓰지 않는다.
+AIRGAP_STRICT = parse_bool_env("AIRGAP_STRICT", os.getenv("AIRGAP_STRICT"), default=True)
+# 내부 호스트로 인정할 도메인(쉼표로 구분, 예: agency.go.kr). 사설 IP와 점 없는 호스트 이름(compose 서비스 이름)은 따로 적지 않아도 된다.
+AIRGAP_INTERNAL_DOMAINS = tuple(
+    d.strip().lower().strip(".") for d in (os.getenv("AIRGAP_INTERNAL_DOMAINS") or "").split(",") if d.strip()
+)
 
 # Qwen3 thinking 모드를 끄는 요청 본문. 서빙마다 방식이 다르다(01-plan 3.7, 9장).
 # ChatOpenAI의 reasoning 인자나 본문 최상위 "reasoning" 키는 Responses API(/responses)로 바꿔 보내므로 extra_body에만 넣는다.
@@ -279,12 +295,15 @@ def _get_openai_compatible_llm(temperature: float):
         raise ValueError(f"airgap LLM settings are missing: {', '.join(missing)}")
     # 구조화 출력은 with_structured_output 기본(json_schema, strict)을 그대로 쓴다.
     # OpenRouter에서는 reasoning이 별도 필드로 와서 content에 <think>가 섞이지 않았다(2026-10-14 확인).
+    extra_body = dict(LLM_THINKING_OFF_BODY[LLM_SERVING])
+    if LLM_MAX_TOKENS:
+        extra_body["max_tokens"] = LLM_MAX_TOKENS
     return ChatOpenAI(
         base_url=LLM_BASE_URL,
         model=LLM_MODEL,
         api_key=LLM_API_KEY,
         temperature=temperature,
-        extra_body=LLM_THINKING_OFF_BODY[LLM_SERVING],
+        extra_body=extra_body,
     )
 
 

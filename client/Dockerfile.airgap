@@ -1,0 +1,18 @@
+# airgap(폐쇄망) 웹 이미지 (01-plan 4.4). public 이미지(Dockerfile)는 그대로 둔다.
+# 인터넷 쪽에서 빌드해 반입한다. 빌드 단계에서 dist 검사(scripts/check-airgap-dist.mjs)까지 통과해야 이미지가 만들어진다.
+#   docker build -f Dockerfile.airgap -t reco-act-web:<버전> .
+# TLS 인증서는 이미지에 넣지 않고 /etc/nginx/tls에 마운트한다(server.crt, server.key).
+
+FROM node:20.19.5-alpine AS build
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY . .
+RUN npm run build:airgap
+
+FROM nginx:1.28.0-alpine AS web
+COPY --from=build /app/dist-airgap /usr/share/nginx/html
+COPY nginx.airgap.conf /etc/nginx/conf.d/default.conf
+COPY nginx.airgap.locations.conf /etc/nginx/reco-act/locations.conf
+EXPOSE 80 443
+CMD ["nginx", "-g", "daemon off;"]

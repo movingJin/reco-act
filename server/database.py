@@ -10,8 +10,7 @@ from datetime import datetime
 load_dotenv()
 
 # PostgreSQL 연결 정보
-DATABASE_URL = os.getenv('DATABASE_URL')
-print(f"Using DATABASE_URL: {DATABASE_URL}")
+DATABASE_URL = os.getenv('DATABASE_URL')  # 비밀번호가 들어 있으므로 로그에 출력하지 않는다
 
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

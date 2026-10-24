@@ -23,6 +23,7 @@ from services import job_service
 from services.summary_service import create_summary, regenerate_meeting_notes
 from services.transcription_service import enqueue_orphaned_transcriptions, transcribe_meeting
 from utils import config
+from utils.airgap_check import enforce_airgap_runtime
 
 # 핸들러는 (job, 단계 기록 함수)를 받고, 실패하면 예외를 올린다.
 JobHandler = Callable[[ProcessingJob, Callable[[str], None]], None]
@@ -176,6 +177,7 @@ class Worker:
 
 
 def main() -> None:
+    enforce_airgap_runtime("worker")  # airgap 외부 호출 0 조건과 모델 경로. 어기면 기동을 멈춘다(public은 하지 않음)
     init_db()
     worker = Worker(concurrency=config.WORKER_CONCURRENCY)
     signal.signal(signal.SIGTERM, lambda *_: worker.stop())

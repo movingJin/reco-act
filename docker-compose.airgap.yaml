@@ -1,0 +1,171 @@
+# airgap(폐쇄망) 배포 구성 (01-plan 4.4). public docker-compose.yaml은 그대로 둔다.
+#
+# 실행(현장 서버, 이미지는 반입 번들에서 docker load):
+#   docker compose -f docker-compose.airgap.yaml --env-file /opt/reco-act/compose.env up -d
+# 예시 설정은 deploy/airgap/*.env.example에 있다. 실제 값이 든 파일은 레포 밖(/opt/reco-act)에 둔다.
+#
+# 네트워크: api·worker·llm·db·redis는 internal 네트워크에만 붙어 외부로 나가는 연결이 막힌다.
+# web(nginx)만 edge 네트워크에도 붙어 443(HTTPS)·80(HTTPS로 리다이렉트)을 연다. 내부 네트워크만으로는 포트를 열 수 없다.
+# 사내 메일 서버로 가는 경로는 현장에서 override 파일로 api를 그 망에 붙여 연다(01-plan 3.8).
+
+name: reco-act-airgap
+
+x-offline-env: &offline-env
+  HF_HUB_OFFLINE: "1"
+  TRANSFORMERS_OFFLINE: "1"
+  HF_HUB_DISABLE_TELEMETRY: "1"
+  PYANNOTE_METRICS_ENABLED: "0"
+
+# api·worker 공통. 비밀과 현장 값(DB, Redis, SECRET_KEY, 메일)은 env_file로, LLM 접속은 compose 안의 llm 서비스로 고정한다.
+x-app-env: &app-env
+  <<: *offline-env
+  APP_PROFILE: airgap
+  AIRGAP_STRICT: "1"
+  ENVIRONMENT: prod
+  TZ: Asia/Seoul
+  PYTHONUNBUFFERED: "1"
+  LLM_SERVING: vllm
+  LLM_BASE_URL: http://llm:8000/v1
+  LLM_MODEL: ${VLLM_SERVED_MODEL_NAME:-qwen3-32b}
+  LLM_API_KEY: EMPTY
+
+x-gpu: &gpu
+  resources:
+    reservations:
+      devices:
+        - driver: nvidia
+          count: all
+          capabilities: [gpu]
+
+services:
+  web:
+    image: reco-act-web:${RECO_ACT_VERSION:-latest}
+    build:
+      context: ./client
+      dockerfile: Dockerfile.airgap
+    restart: unless-stopped
+    ports:
+      - "${WEB_HTTPS_PORT:-443}:443"
+      - "${WEB_HTTP_PORT:-80}:80"
+    volumes:
+      - ${RECO_ACT_HOME:-/opt/reco-act}/tls:/etc/nginx/tls:ro
+    networks: [edge, internal]
+    depends_on:
+      api:
+        condition: service_healthy
+
+  api:
+    image: reco-act-api-airgap:${RECO_ACT_VERSION:-latest}
+    build:
+      context: ./server
+      dockerfile: Dockerfile.airgap
+      target: api
+    restart: unless-stopped
+    env_file:
+      - "${RECO_ACT_HOME:-/opt/reco-act}/airgap.env"
+    environment:
+      <<: *app-env
+    volumes:
+      - ${RECO_ACT_HOME:-/opt/reco-act}/records:/app/records
+    networks: [internal]
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # GPU 1장이라 한 번에 한 작업만 처리한다(WORKER_CONCURRENCY=1, 00-decisions 2.1).
+  worker:
+    image: reco-act-worker:${RECO_ACT_VERSION:-latest}
+    build:
+      context: ./server
+      dockerfile: Dockerfile.airgap
+      target: worker
+    restart: unless-stopped
+    env_file:
+      - "${RECO_ACT_HOME:-/opt/reco-act}/airgap.env"
+    environment:
+      <<: *app-env
+      WORKER_CONCURRENCY: "1"
+      STT_PROVIDER: faster_whisper
+      DIARIZER: pyannote
+      WHISPER_MODEL_PATH: /models/${WHISPER_MODEL_DIR:-faster-whisper-large-v3}
+      PYANNOTE_PIPELINE_PATH: /models/${PYANNOTE_PIPELINE_DIR:-speaker-diarization-community-1}
+      STT_DEVICE: cuda
+    volumes:
+      - ${RECO_ACT_HOME:-/opt/reco-act}/records:/app/records
+      - ${RECO_ACT_HOME:-/opt/reco-act}/models:/models:ro
+    networks: [internal]
+    deploy: *gpu
+    # SIGTERM을 받으면 실행 중인 작업을 5초 기다린 뒤 큐에 돌려주고 끝난다(PR-5b). 그보다 길게 둔다.
+    stop_grace_period: 15s
+    depends_on:
+      api:
+        condition: service_healthy  # API가 기동하며 새 테이블을 만든 뒤 시작한다
+      llm:
+        condition: service_healthy
+
+  # vLLM(OpenAI 호환). Qwen3-32B INT4(AWQ). 버전·인자·메모리 설정은 GPU 환경에서 확인한다(01-plan 3.6, 9장).
+  llm:
+    image: vllm/vllm-openai:${VLLM_VERSION:-v0.31.0}
+    restart: unless-stopped
+    command:
+      - --model
+      - /models/${LLM_MODEL_DIR:-Qwen3-32B-AWQ}
+      - --served-model-name
+      - ${VLLM_SERVED_MODEL_NAME:-qwen3-32b}
+      - --max-model-len
+      - "${VLLM_MAX_MODEL_LEN:-32768}"
+      - --gpu-memory-utilization
+      - "${VLLM_GPU_MEMORY_UTILIZATION:-0.70}"
+    environment:
+      <<: *offline-env
+      # 사용 통계 전송을 끈다(vLLM 문서의 두 가지 방법을 모두 둔다).
+      VLLM_NO_USAGE_STATS: "1"
+      DO_NOT_TRACK: "1"
+    volumes:
+      - ${RECO_ACT_HOME:-/opt/reco-act}/models:/models:ro
+    networks: [internal]
+    deploy: *gpu
+    ipc: host
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 15m  # 모델 로드
+
+  db:
+    image: postgres:16.10-bookworm
+    restart: unless-stopped
+    env_file:
+      - "${RECO_ACT_HOME:-/opt/reco-act}/db.env"
+    environment:
+      TZ: Asia/Seoul
+    volumes:
+      - ${RECO_ACT_HOME:-/opt/reco-act}/pgdata:/var/lib/postgresql/data
+    networks: [internal]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # Redis 7.2는 BSD 라이선스의 마지막 계열이다(7.4부터 RSALv2/SSPLv1, 01-plan R14). internal 네트워크에서만 접근한다.
+  redis:
+    image: redis:7.2.10-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - ${RECO_ACT_HOME:-/opt/reco-act}/redis:/data
+    networks: [internal]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+networks:
+  internal:
+    internal: true
+  edge: {}

@@ -170,6 +170,19 @@ def test_airgap_openrouter_request(fake_llm_server, synthetic_meeting, reload_co
         assert body["response_format"]["type"] == "json_schema"
 
 
+def test_llm_max_tokens_is_sent_only_when_set(fake_llm_server, synthetic_meeting, reload_config):
+    """모의 환경(OpenRouter)은 LLM_MAX_TOKENS로 응답 상한을 둔다. 미설정이면 보내지 않는다(vLLM 기본 동작)."""
+    reload_config(**airgap_env(fake_llm_server))
+    run_summary(synthetic_meeting)
+    assert all("max_tokens" not in r["body"] for r in fake_llm_server.requests)
+
+    fake_llm_server.requests.clear()
+    reload_config(**airgap_env(fake_llm_server, LLM_SERVING="openrouter", LLM_MAX_TOKENS="8192"))
+    run_summary(synthetic_meeting)
+    assert {r["body"]["max_tokens"] for r in fake_llm_server.requests} == {8192}
+    assert all(r["body"]["reasoning"] == {"enabled": False} for r in fake_llm_server.requests)
+
+
 def test_airgap_missing_settings(reload_config):
     cfg = reload_config(APP_PROFILE="airgap", LLM_API_KEY="secret-value")
     with pytest.raises(ValueError) as excinfo:

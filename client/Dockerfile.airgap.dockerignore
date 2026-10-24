@@ -1,0 +1,8 @@
+# Dockerfile.airgap 전용 ignore(BuildKit). 빌드에 필요 없는 산출물·네이티브 프로젝트를 뺀다.
+node_modules
+dist
+dist-airgap
+android
+ios
+.env.mobile
+*.tsbuildinfo

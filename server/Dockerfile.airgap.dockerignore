@@ -1,0 +1,30 @@
+# Dockerfile.airgap 전용 ignore(BuildKit은 <Dockerfile 이름>.dockerignore를 먼저 쓴다). 01-plan 4.4.
+# 허용 목록이다. 모두 빼고 앱 코드와 의존성 목록만 다시 넣는다.
+# 그래서 .env·prod.env(비밀), records/(실제 녹음), .venv, prompt.txt, 테스트, *.wav 같은 파일은 이미지에 들어가지 않는다.
+# clova_stt.py(외부 API 클라이언트)와 수동 스크립트 test.py도 넣지 않는다.
+*
+!requirements.txt
+!requirements-airgap.txt
+!main.py
+!worker.py
+!database.py
+!api
+!api/**
+!graph
+!graph/**
+!models
+!models/**
+!services
+!services/**
+!stt
+!stt/**
+!diarization
+!diarization/**
+!pipeline
+!pipeline/**
+!utils
+!utils/**
+!scripts
+!scripts/**
+**/__pycache__
+**/*.pyc

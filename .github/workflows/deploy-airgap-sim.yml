@@ -1,0 +1,74 @@
+name: reco-act airgap-sim deploy
+
+# airgap 모의 환경(public 서버, GPU 없음)을 배포한다(01-plan 4.6, 2026-10-24 결정).
+# Actions 화면에서 수동 실행할 때만, main 브랜치에서만 돈다. PR·push로는 배포하지 않는다.
+# public 운영과 디렉터리(SERVICE_ROOT/reco-act-airgap-sim)·compose 프로젝트·DB를 따로 쓰고, 운영의 ENV_FILE은 쓰지 않는다.
+# 필요한 Secrets: PROD_HOST, PROD_USERNAME, PROD_PRIVATE_KEY, PROD_PORT, SERVICE_ROOT(운영과 같음), AIRGAP_SIM_ENV(새로 추가).
+# 모델(faster-whisper, pyannote)은 용량이 커서 Actions로 보내지 않는다. 서버의 models/에 미리 올려 둔다.
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # airgap 웹 빌드. 끝에서 dist 검사(Capacitor·외부 URL·위탁사 문구)가 돌고, 걸리면 배포하지 않는다.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build airgap web
+        run: |
+          cd client
+          npm ci
+          npm run build:airgap
+
+      - name: Write airgap-sim env file
+        run: |
+          echo "${{ secrets.AIRGAP_SIM_ENV }}" | base64 --decode > airgap-sim.env
+          test -s airgap-sim.env || { echo "AIRGAP_SIM_ENV secret is empty"; exit 1; }
+
+      - name: Transfer files
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.PROD_USERNAME }}
+          key: ${{ secrets.PROD_PRIVATE_KEY }}
+          port: ${{ secrets.PROD_PORT }}
+          source: "airgap-sim.env,docker-compose.airgap-sim.yaml,client/dist-airgap,client/nginx.airgap-http.conf,client/nginx.airgap.locations.conf,server/*"
+          target: ${{ format('{0}/reco-act-airgap-sim', secrets.SERVICE_ROOT) }}
+          overwrite: true
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy airgap-sim
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.PROD_USERNAME }}
+          key: ${{ secrets.PROD_PRIVATE_KEY }}
+          port: ${{ secrets.PROD_PORT }}
+          command_timeout: 1h
+          script: |
+            set -e
+            cd ${{ format('{0}/reco-act-airgap-sim', secrets.SERVICE_ROOT) }}
+            PATH="/var/packages/ContainerManager/target/usr/bin/:$PATH"
+            chmod 600 airgap-sim.env
+            mkdir -p data/records data/pgdata data/redis models
+            # 모델이 없으면 업로드한 회의가 전사 단계에서 실패하므로 배포 전에 멈춘다.
+            WHISPER_DIR=$(grep -E '^SIM_WHISPER_MODEL_DIR=' airgap-sim.env | cut -d= -f2- || true)
+            PYANNOTE_DIR=$(grep -E '^SIM_PYANNOTE_PIPELINE_DIR=' airgap-sim.env | cut -d= -f2- || true)
+            for f in "models/${WHISPER_DIR:-faster-whisper-small}/model.bin" "models/${WHISPER_DIR:-faster-whisper-small}/tokenizer.json" \
+                     "models/${PYANNOTE_DIR:-speaker-diarization-community-1}/config.yaml"; do
+              test -f "$f" || { echo "missing $f: upload the model directories to $(pwd)/models first (01-plan 4.6)"; exit 1; }
+            done
+            export DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1
+            COMPOSE="docker-compose -p reco-act-airgap-sim -f docker-compose.airgap-sim.yaml --env-file airgap-sim.env"
+            $COMPOSE build
+            $COMPOSE up -d
+            $COMPOSE ps
+            docker image prune -f

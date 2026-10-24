@@ -1,0 +1,25 @@
+# mock 모드: GPU·모델 없이 airgap 구성(internal 네트워크, HTTPS web, api, worker, db, redis)을 끝까지 확인한다(01-plan PR-15).
+# STT·화자분리는 mock(고정 단어·구간), LLM은 scripts/mock_llm.py가 대신한다. 워커는 GPU 의존성이 필요 없어 api 이미지를 쓴다.
+# Docker Compose 2.24 이상이 필요하다(!reset). 절차는 01-plan 4.4의 PR-15 구현 결과에 있다.
+#   docker compose -f docker-compose.airgap.yaml -f docker-compose.airgap.mock.yaml --env-file <compose.env> up -d --build
+
+services:
+  worker:
+    image: reco-act-api-airgap:${RECO_ACT_VERSION:-latest}
+    build:
+      context: ./server
+      dockerfile: Dockerfile.airgap
+      target: api
+    command: ["python", "-m", "worker"]
+    environment:
+      STT_PROVIDER: mock
+      DIARIZER: mock
+      STT_DEVICE: cpu
+    deploy: !reset {}
+    healthcheck:
+      disable: true  # api 이미지의 HEALTHCHECK는 API(8000)를 본다
+
+  llm:
+    image: reco-act-api-airgap:${RECO_ACT_VERSION:-latest}
+    command: ["python", "-m", "scripts.mock_llm", "--port", "8000"]
+    deploy: !reset {}

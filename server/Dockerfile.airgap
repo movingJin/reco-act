@@ -1,0 +1,90 @@
+# airgap(폐쇄망) 서버 이미지 (01-plan 4.4). public 이미지(Dockerfile)는 그대로 둔다.
+# 인터넷 쪽에서 빌드해 반입한다.
+#   docker build -f Dockerfile.airgap --target api        -t reco-act-api-airgap:<버전> .
+#   docker build -f Dockerfile.airgap --target worker     -t reco-act-worker:<버전> .       # GPU(CUDA 12.8)
+#   docker build -f Dockerfile.airgap --target worker-cpu -t reco-act-worker-cpu:<버전> .   # 모의 환경(GPU 없음)
+# 앱 코드는 아래 COPY 목록으로만 넣는다. 그래서 빌드 도구가 Dockerfile.airgap.dockerignore를 쓰지 않아도(BuildKit이 아니어도)
+# .env·prod.env(비밀), records/(실제 녹음), prompt.txt, 테스트는 이미지에 들어가지 않는다. 비밀은 런타임에 env_file로 넣는다.
+
+# ---------- api: FastAPI. GPU 의존성 없음 ----------
+FROM python:3.10.18-slim-bookworm AS api
+
+# 프로파일과 오프라인 설정을 이미지 기본값으로 둔다(compose에서도 같은 값을 준다).
+ENV APP_PROFILE=airgap \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    HF_HUB_OFFLINE=1 \
+    TRANSFORMERS_OFFLINE=1 \
+    HF_HUB_DISABLE_TELEMETRY=1 \
+    PYANNOTE_METRICS_ENABLED=0
+
+# ffmpeg: API는 변환하지 않지만 전사 모듈을 import할 때 pydub가 ffmpeg를 찾는다(없으면 기동 로그에 경고).
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+COPY main.py worker.py database.py ./
+COPY api ./api
+COPY graph ./graph
+COPY models ./models
+COPY services ./services
+COPY stt ./stt
+COPY diarization ./diarization
+COPY pipeline ./pipeline
+COPY utils ./utils
+COPY scripts ./scripts
+# Swagger UI 정적 파일(버전·SHA256 고정). airgap API는 CDN 대신 이것으로 /docs를 띄운다.
+RUN python -m scripts.fetch_swagger_ui /app/static/swagger-ui && mkdir -p /app/records
+
+EXPOSE 8000
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=40s \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)" || exit 1
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+# ---------- worker-cpu: GPU 없는 모의 환경용 워커. faster-whisper(int8)·pyannote를 CPU로 돌린다 ----------
+# api 이미지 위에 airgap 엔진 의존성(torch CPU 빌드)을 더한다.
+FROM api AS worker-cpu
+COPY requirements-airgap.txt .
+RUN pip install -r requirements-airgap.txt \
+    --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple
+HEALTHCHECK NONE
+CMD ["python", "-m", "worker"]
+
+# ---------- worker: 전사(faster-whisper)·화자분리(pyannote)·요약 워커. CUDA 12.8(RTX 5090) ----------
+# Ubuntu 22.04의 Python이 3.10이라 api와 같은 버전이다. cuDNN 9와 cuBLAS 12는 CTranslate2가 쓴다.
+FROM nvidia/cuda:12.8.1-cudnn-runtime-ubuntu22.04 AS worker
+
+ENV APP_PROFILE=airgap \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    DEBIAN_FRONTEND=noninteractive \
+    HF_HUB_OFFLINE=1 \
+    TRANSFORMERS_OFFLINE=1 \
+    HF_HUB_DISABLE_TELEMETRY=1 \
+    PYANNOTE_METRICS_ENABLED=0
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3.10 python3-pip ffmpeg \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -s /usr/bin/python3.10 /usr/local/bin/python \
+    && python -m pip install --upgrade pip
+
+WORKDIR /app
+COPY requirements.txt requirements-airgap.txt ./
+# torch는 CUDA 12.8 빌드를 받는다(requirements-airgap.txt 주석). 나머지는 PyPI.
+RUN python -m pip install -r requirements-airgap.txt \
+    --index-url https://download.pytorch.org/whl/cu128 --extra-index-url https://pypi.org/simple
+COPY main.py worker.py database.py ./
+COPY api ./api
+COPY graph ./graph
+COPY models ./models
+COPY services ./services
+COPY stt ./stt
+COPY diarization ./diarization
+COPY pipeline ./pipeline
+COPY utils ./utils
+COPY scripts ./scripts
+RUN mkdir -p /app/records
+
+CMD ["python", "-m", "worker"]
