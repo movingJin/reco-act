@@ -192,13 +192,20 @@ def transcription_env(tmp_path, monkeypatch):
     def recorder(name):
         return lambda *args, **kwargs: calls.append((name, args, kwargs))
 
-    for name in ("update_meeting_settings", "update_transcript", "add_audio_file", "clear_audio_file", "set_transcription_status"):
+    for name in (
+        "save_stt_result", "update_meeting_settings", "update_transcript", "add_audio_file", "clear_audio_file",
+        "set_transcription_status",
+    ):
         monkeypatch.setattr(transcription_service, name, recorder(name))
     monkeypatch.setattr(transcription_service, "get_pending_transcription", lambda meeting_id: (str(source), DOMAIN_ID))
     monkeypatch.setattr(
         transcription_service, "get_domain_keywords", lambda domain_id: KEYWORDS if domain_id == DOMAIN_ID else None
     )
-    return SimpleNamespace(source=source, records=records, calls=calls)
+    env = SimpleNamespace(source=source, records=records, calls=calls, corrections=[])
+    monkeypatch.setattr(
+        transcription_service, "get_term_corrections", lambda domain_id: env.corrections if domain_id == DOMAIN_ID else []
+    )
+    return env
 
 
 def test_public_transcription_through_clova_adapter(fake_clova, transcription_env):
@@ -245,22 +252,37 @@ def test_airgap_transcription_never_calls_clova(fake_clova, transcription_env, r
 
 
 def test_airgap_words_engine_is_diarized_and_merged(fake_clova, transcription_env, reload_config):
-    """airgap: ffmpeg 16kHz mono 정규화 → 단어만 주는 STT(mock) → 화자분리(mock) → 병합 → 기존 저장 경로."""
+    """airgap: ffmpeg 16kHz mono 정규화 → 단어만 주는 STT(mock) → 화자분리(mock) → 병합 → 용어 사전 → 원문 보존 → 기존 저장 경로."""
     reload_config(APP_PROFILE="airgap", STT_PROVIDER="mock", DIARIZER="mock")
+    transcription_env.corrections = [("검색 개편", "검색엔진 개편")]
     stages = []
 
-    saved = transcription_service.transcribe_meeting(MEETING_ID, stages.append)
+    saved = transcription_service.transcribe_meeting(MEETING_ID, stages.append, job_id=42)
 
     assert saved == 2
-    assert stages == ["normalize", "stt", "diarize", "merge", "save"]
+    assert stages == ["normalize", "stt", "diarize", "merge", "glossary", "save"]  # LLM 보정은 기본으로 꺼져 있다
     assert fake_clova.requests == []
 
-    settings, transcript, audio, status = transcription_env.calls
-    assert settings == ("update_meeting_settings", (MEETING_ID, ["화자1", "화자2"]), {})
-    assert transcript == ("update_transcript", (MEETING_ID, [
+    record, settings, transcript, audio, status = transcription_env.calls
+    raw = [
         {"speaker_index": 0, "text": "안녕하세요. 오늘은 검색 개편을 논의합니다.", "start": 0, "end": 3400},
         {"speaker_index": 1, "text": "네, 일정부터 정하죠.", "start": 4200, "end": 6100},
-    ]), {})
+    ]
+    corrected = [{**raw[0], "text": "안녕하세요. 오늘은 검색엔진 개편을 논의합니다."}, raw[1]]
+    name, (meeting_id,), fields = record
+    assert (name, meeting_id) == ("save_stt_result", MEETING_ID)
+    assert fields == {
+        "job_id": 42,
+        "engine": "mock",
+        "engine_version": None,
+        "words": [{"start_ms": w.start_ms, "end_ms": w.end_ms, "text": w.text, "prob": None} for w in MOCK_WORDS],
+        "diarization": [{"start_ms": 0, "end_ms": 3500, "speaker": "SPEAKER_00"}, {"start_ms": 4100, "end_ms": 6200, "speaker": "SPEAKER_01"}],
+        "raw_segments": raw,  # 원문은 보정 전 그대로
+        "corrected_segments": corrected,
+        "engine_raw": None,
+    }
+    assert settings == ("update_meeting_settings", (MEETING_ID, ["화자1", "화자2"]), {})
+    assert transcript == ("update_transcript", (MEETING_ID, corrected), {})  # transcripts에는 보정본
 
     name, (meeting_id, wav_path), kwargs = audio
     assert (name, meeting_id, kwargs) == ("add_audio_file", MEETING_ID, {"duration_ms": 1500})
@@ -270,6 +292,55 @@ def test_airgap_words_engine_is_diarized_and_merged(fake_clova, transcription_en
 
     assert status == ("set_transcription_status", (MEETING_ID, "done"), {"clear_source": True})
     assert not transcription_env.source.exists()
+
+
+def test_airgap_llm_correction_runs_after_glossary(transcription_env, reload_config, monkeypatch):
+    reload_config(APP_PROFILE="airgap", STT_PROVIDER="mock", DIARIZER="mock", TERM_CORRECTION_LLM="true")
+    transcription_env.corrections = [("검색 개편", "검색엔진 개편")]
+    seen = {}
+
+    def fake_correct(segments, glossary):
+        seen["texts"], seen["glossary"] = [s.text for s in segments], glossary
+        return [s.model_copy(update={"text": s.text.replace("일정부터", "일정부터는")}) for s in segments]
+
+    monkeypatch.setattr(transcription_service, "correct_segments", fake_correct)
+    stages = []
+
+    transcription_service.transcribe_meeting(MEETING_ID, stages.append)
+
+    assert stages == ["normalize", "stt", "diarize", "merge", "glossary", "correct", "save"]
+    assert seen["texts"][0] == "안녕하세요. 오늘은 검색엔진 개편을 논의합니다."  # 사전 치환 다음에 돈다
+    assert seen["glossary"] == KEYWORDS + ["검색엔진 개편"]  # 도메인 키워드 + 사전의 정식 표기
+    record = transcription_env.calls[0][2]
+    assert record["raw_segments"][1]["text"] == "네, 일정부터 정하죠."
+    assert record["corrected_segments"][1]["text"] == "네, 일정부터는 정하죠."
+
+
+def test_airgap_failure_removes_the_attempt_wav(transcription_env, reload_config, monkeypatch):
+    """airgap은 재시도마다 새 WAV를 만들므로 실패한 시도의 WAV를 남기지 않는다. 원본은 다시 처리하도록 남긴다."""
+    reload_config(APP_PROFILE="airgap", STT_PROVIDER="mock", DIARIZER="mock")
+
+    def broken_diarizer():
+        raise RuntimeError("diarizer exploded")
+
+    monkeypatch.setattr(transcription_service, "get_diarizer", broken_diarizer)
+
+    with pytest.raises(RuntimeError, match="exploded"):
+        transcription_service.transcribe_meeting(MEETING_ID)
+
+    assert list(transcription_env.records.iterdir()) == []
+    assert transcription_env.source.exists()
+    assert transcription_env.calls == []
+
+
+def test_public_failure_keeps_wav_as_before(fake_clova, transcription_env, monkeypatch):
+    """public은 현행대로 둔다(실패한 시도의 WAV가 남는다)."""
+    monkeypatch.setattr(clova_stt, "convert", lambda **kwargs: (_ for _ in ()).throw(RuntimeError("clova down")))
+
+    with pytest.raises(RuntimeError, match="clova down"):
+        transcription_service.transcribe_meeting(MEETING_ID)
+
+    assert len(list(transcription_env.records.iterdir())) == 1
 
 
 def test_words_engine_without_diarizer_fails(transcription_env, reload_config):

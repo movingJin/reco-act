@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 from dotenv import load_dotenv
-from sqlalchemy import create_engine, Column, String, DateTime, TIMESTAMP, Integer, Float, Text, ARRAY, ForeignKey, Boolean, Index
+from sqlalchemy import create_engine, Column, String, DateTime, TIMESTAMP, Integer, Float, Text, ARRAY, ForeignKey, Boolean, Index, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
@@ -124,6 +124,44 @@ class ProcessingJob(Base):
 
     # 큐에서 다음 작업을 꺼내는 조회(status='queued', 우선순위·등록순)
     __table_args__ = (Index("ix_processing_jobs_queue", "status", "priority", "id"),)
+
+
+class TermCorrection(Base):
+    """용어 사전: 오인식 표현(wrong) → 정식 표기(correct), 도메인별 (01-plan 3.4).
+
+    airgap 전사의 사전 치환 단계가 쓴다. 새 테이블이라 create_all로 생기며 수동 ALTER가 필요 없다.
+    처음에는 scripts/import_term_corrections.py(CSV)로 채운다. 도메인을 지우면 함께 지워진다.
+    """
+    __tablename__ = "term_corrections"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    domain_id = Column(Integer, ForeignKey("domain_keywords.id", ondelete="CASCADE"), nullable=False, index=True)
+    wrong = Column(String, nullable=False)
+    correct = Column(String, nullable=False)
+    created_at = Column(TIMESTAMP, nullable=False, default=datetime.utcnow)
+
+    __table_args__ = (UniqueConstraint("domain_id", "wrong", name="uq_term_corrections_domain_wrong"),)
+
+
+class SttResultRecord(Base):
+    """airgap 전사의 원문 보존 (01-plan 3.4, 00-decisions 2.4).
+
+    transcripts에는 보정한 세그먼트를 저장하고, 보정 전 원문과 엔진 출력은 여기에 남긴다. 전사가 끝날 때마다 한 행씩 쌓인다.
+    public(Clova)은 저장하지 않는다. 새 테이블이라 create_all로 생기며, 회의를 지우면 함께 지워진다.
+    """
+    __tablename__ = "stt_results"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    meeting_id = Column(String, ForeignKey("meetings.id", ondelete="CASCADE"), nullable=False, index=True)
+    job_id = Column(Integer, nullable=True)  # 이 전사를 만든 processing_jobs.id(작업 기록은 따로 지워질 수 있어 FK는 두지 않음)
+    engine = Column(String, nullable=False)
+    engine_version = Column(String, nullable=True)
+    words = Column(JSONB, nullable=True)  # STT 단어 [{start_ms, end_ms, text, prob}]
+    diarization = Column(JSONB, nullable=True)  # 화자분리 구간 [{start_ms, end_ms, speaker}]
+    raw_segments = Column(JSONB, nullable=True)  # 병합 직후, 보정 전 세그먼트
+    corrected_segments = Column(JSONB, nullable=True)  # 사전 치환·LLM 보정 후 세그먼트(transcripts에 저장한 값)
+    engine_raw = Column(JSONB, nullable=True)  # 엔진 부가 정보(언어, 길이, hotwords 등)
+    created_at = Column(TIMESTAMP, nullable=False, default=datetime.utcnow)
 
 
 def init_db():

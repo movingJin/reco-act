@@ -646,7 +646,7 @@ def test_airgap_mock_pipeline_transcribes_and_chains_summary(uploaded_meeting, m
 
     assert Worker(worker_id="w", poll_interval=0.01).run_once() is True
 
-    assert stages == ["normalize", "stt", "diarize", "merge", "save"]
+    assert stages == ["normalize", "stt", "diarize", "merge", "glossary", "save"]
     assert job_row(job_id).status == "done"
     meeting = load_meeting(uploaded_meeting.id)
     assert meeting.transcription_status == "done"
@@ -658,6 +658,52 @@ def test_airgap_mock_pipeline_transcribes_and_chains_summary(uploaded_meeting, m
     assert meeting.duration_ms == 1500 and len(meeting.audio_files) == 1
     assert not uploaded_meeting.source.exists()
     assert job_service.find_active_job(uploaded_meeting.id, "summarize") is not None
+
+
+def test_airgap_glossary_and_raw_transcript_are_stored(db, uploaded_meeting, monkeypatch):
+    """사전 치환한 보정본은 transcripts에, 보정 전 원문과 엔진 출력은 stt_results에 남는다(작업 id 포함). 회의를 지우면 함께 지워진다."""
+    from database import DomainKeywords, SttResultRecord, TermCorrection
+    from services.meeting_service import delete_meeting
+    from utils import config
+    monkeypatch.setattr(config, "APP_PROFILE", "airgap")
+    monkeypatch.setattr(config, "STT_PROVIDER", "mock")
+    monkeypatch.setattr(config, "DIARIZER", "mock")
+    with db() as session:
+        domain = DomainKeywords(domain_name="검색", keywords=["검색엔진"])
+        session.add(domain)
+        session.flush()
+        session.add(TermCorrection(domain_id=domain.id, wrong="검색 개편", correct="검색엔진 개편"))
+        session.query(DBMeeting).filter(DBMeeting.id == uploaded_meeting.id).update({"domain_id": domain.id})
+        session.commit()
+    job_id = job_service.enqueue_job(uploaded_meeting.id, "transcribe")
+
+    assert Worker(worker_id="w", poll_interval=0.01).run_once() is True
+
+    assert job_row(job_id).stage is None and job_row(job_id).status == "done"
+    meeting = load_meeting(uploaded_meeting.id)
+    assert [s.text for s in meeting.transcript] == ["안녕하세요. 오늘은 검색엔진 개편을 논의합니다.", "네, 일정부터 정하죠."]
+    with db() as session:
+        (record,) = session.query(SttResultRecord).filter(SttResultRecord.meeting_id == uploaded_meeting.id).all()
+        assert (record.job_id, record.engine) == (job_id, "mock")
+        assert [s["text"] for s in record.raw_segments] == ["안녕하세요. 오늘은 검색 개편을 논의합니다.", "네, 일정부터 정하죠."]
+        assert [s["text"] for s in record.corrected_segments] == [s.text for s in meeting.transcript]
+        assert len(record.words) == 8 and [t["speaker"] for t in record.diarization] == ["SPEAKER_00", "SPEAKER_01"]
+
+    assert delete_meeting(uploaded_meeting.id)
+    with db() as session:
+        assert session.query(SttResultRecord).count() == 0
+
+
+def test_public_clova_path_stores_no_raw_transcript(db, uploaded_meeting, monkeypatch):
+    from database import SttResultRecord
+    monkeypatch.setattr(transcription_service, "get_stt_provider", lambda: SegmentsProvider())
+    job_service.enqueue_job(uploaded_meeting.id, "transcribe")
+
+    Worker(worker_id="w", poll_interval=0.01).run_once()
+
+    assert load_meeting(uploaded_meeting.id).transcription_status == "done"
+    with db() as session:
+        assert session.query(SttResultRecord).count() == 0
 
 
 def test_airgap_undecodable_audio_fails_job_without_retry(uploaded_meeting, monkeypatch):

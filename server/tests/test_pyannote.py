@@ -278,6 +278,7 @@ def test_airgap_pipeline_end_to_end(tmp_path, real_pyannote, no_network, monkeyp
     monkeypatch.setattr(transcription_service, "get_pending_transcription", lambda meeting_id: (str(source), None))
     monkeypatch.setattr(transcription_service, "update_meeting_settings", lambda m, names: saved.update(names=names))
     monkeypatch.setattr(transcription_service, "update_transcript", lambda m, data: saved.update(transcript=data))
+    monkeypatch.setattr(transcription_service, "save_stt_result", lambda m, **fields: saved.update(record=fields))
     for name in ("add_audio_file", "clear_audio_file", "set_transcription_status"):
         monkeypatch.setattr(transcription_service, name, lambda *args, **kwargs: None)
     stages = []
@@ -299,8 +300,13 @@ def test_airgap_pipeline_end_to_end(tmp_path, real_pyannote, no_network, monkeyp
         fw._unload_model()
 
     assert no_network == []
-    assert stages == ["normalize", "stt", "diarize", "merge", "save"]
+    assert stages == ["normalize", "stt", "diarize", "merge", "glossary", "save"]
     assert saved["names"] == ["화자1", "화자2", "화자3"]
+    record = saved["record"]  # 원문 보존: 실제 엔진의 단어, 화자 구간, 엔진 정보
+    assert record["engine"] == "faster_whisper" and record["engine_version"].startswith("faster-whisper 1.2.1")
+    assert record["words"] and {t["speaker"] for t in record["diarization"]} == {"SPEAKER_00", "SPEAKER_01", "SPEAKER_02"}
+    assert record["corrected_segments"] == saved["transcript"]  # 사전이 없으면 원문과 같다
+    assert record["raw_segments"] == saved["transcript"]
     turns = []  # 연속된 같은 화자 세그먼트를 묶은 차례
     for segment in saved["transcript"]:
         if turns and turns[-1][0] == segment["speaker_index"]:

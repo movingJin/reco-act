@@ -335,6 +335,32 @@ def delete_meeting(meeting_id: str) -> bool:
         db.close()
 
 
+def get_term_corrections(domain_id: int) -> List[tuple]:
+    """도메인의 용어 사전을 (wrong, correct) 목록으로 돌려준다(01-plan 3.4). 없으면 빈 목록."""
+    from database import TermCorrection
+
+    db = get_db()
+    try:
+        rows = db.query(TermCorrection.wrong, TermCorrection.correct).filter(TermCorrection.domain_id == domain_id).all()
+        return [(row.wrong, row.correct) for row in rows]
+    finally:
+        db.close()
+
+
+def save_stt_result(meeting_id: str, **fields) -> int:
+    """airgap 전사의 원문(엔진 출력, 화자 구간, 보정 전후 세그먼트)을 stt_results에 한 행 넣고 id를 돌려준다(01-plan 3.4)."""
+    from database import SttResultRecord
+
+    db = get_db()
+    try:
+        record = SttResultRecord(meeting_id=meeting_id, **fields)
+        db.add(record)
+        db.commit()
+        return record.id
+    finally:
+        db.close()
+
+
 def get_domain_keywords(domain_id: int) -> Optional[List[str]]:
     """
     도메인 ID로 해당 도메인의 키워드 목록을 조회합니다.

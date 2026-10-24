@@ -31,3 +31,4 @@ client/vite.config.js
 client/vite.config.d.ts
 CLAUDE.md
 server/prompt.txt
+records/

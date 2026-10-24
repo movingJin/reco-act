@@ -53,6 +53,7 @@ CLEARED_ENV_KEYS = SECRET_ENV_KEYS + [
     "STT_COMPUTE_TYPE",
     "DIARIZER",
     "PYANNOTE_PIPELINE_PATH",
+    "TERM_CORRECTION_LLM",
     "PYANNOTE_METRICS_ENABLED",
     "WORKER_CONCURRENCY",
     "SUMMARY_WAIT_TIMEOUT",
@@ -157,7 +158,10 @@ def db(pg_engine):
     database.SessionLocal.configure(bind=pg_engine)
     # 몇 행뿐이라 TRUNCATE(파일 교체)보다 DELETE가 빠르다. id는 이어서 증가하므로 테스트는 반환된 id를 쓴다.
     with pg_engine.begin() as conn:
-        for table in ("processing_jobs", "transcripts", "paragraphs", "next_steps", "meetings", "users", "domain_keywords"):
+        for table in (
+            "processing_jobs", "stt_results", "transcripts", "paragraphs", "next_steps", "meetings", "users",
+            "term_corrections", "domain_keywords",
+        ):
             conn.execute(text(f"DELETE FROM {table}"))
     yield database.SessionLocal
     database.SessionLocal.configure(bind=original)

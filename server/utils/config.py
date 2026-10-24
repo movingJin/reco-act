@@ -117,6 +117,10 @@ def parse_diarizer(value: Optional[str], app_profile: str) -> Optional[str]:
 
 DIARIZER = parse_diarizer(os.getenv("DIARIZER"), APP_PROFILE)
 
+# 용어 보정 3단계(00-decisions 2.4) 중 LLM 보정(선택). 사전 치환이 끝난 세그먼트의 용어 오인식만 LLM으로 고친다(01-plan 3.4).
+# 단어만 주는 STT 엔진의 경로(airgap)에서만 쓴다. 꺼도 사전 치환은 한다.
+TERM_CORRECTION_LLM = parse_bool_env("TERM_CORRECTION_LLM", os.getenv("TERM_CORRECTION_LLM"), default=False)
+
 # pyannote speaker-diarization-community-1 파이프라인 디렉터리(config.yaml + segmentation/embedding/plda). 로컬 경로만 쓴다.
 # 장치는 STT와 같은 STT_DEVICE를 쓴다(GPU 1장).
 PYANNOTE_PIPELINE_PATH = os.getenv("PYANNOTE_PIPELINE_PATH") or "/models/speaker-diarization-community-1"
