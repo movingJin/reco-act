@@ -297,7 +297,7 @@ def test_wheels_from_report_and_lock():
                         f"numpy==2.2.6 --hash=sha256:{'a' * 64}", f"torch==2.8.0+cu128 --hash=sha256:{'a' * 64}"]
 
 
-def test_license_from_the_wheel_file_when_metadata_has_none(tmp_path):
+def test_license_from_the_wheel_when_the_report_has_none(tmp_path):
     def make(name, files):
         path = tmp_path / name
         with zipfile.ZipFile(path, "w") as wheel:
@@ -305,12 +305,19 @@ def test_license_from_the_wheel_file_when_metadata_has_none(tmp_path):
                 wheel.writestr(member, text)
         return path
 
+    # pip 23(서버의 python:3.10 이미지)은 보고서에 License-Expression을 넣지 않는다. click·pillow 등은 이 필드에만 적는다
+    metadata = "Metadata-Version: 2.4\nName: click\nVersion: 8.3.0\nLicense-Expression: BSD-3-Clause\nLicense-File: LICENSE.txt\n\nbody"
+    assert bundle.wheel_license(make("m.whl", {"click-8.3.0.dist-info/METADATA": metadata,
+                                               "click-8.3.0.dist-info/licenses/LICENSE.txt": "Copyright 2014 Pallets"})) == "BSD-3-Clause"
+    classified = "Metadata-Version: 2.1\nName: x\nClassifier: License :: OSI Approved :: MIT License\n\n"
+    assert bundle.wheel_license(make("k.whl", {"x-1.dist-info/METADATA": classified})) == "MIT License"
     # pyannote 계열·torchcodec은 메타데이터에 라이선스 없이 License-File만 둔다(PEP 639)
     found = make("a.whl", {"pkg/x.py": "", "pkg/vendor/LICENSE": "Apache License", "a-1.dist-info/licenses/": "",
+                           "a-1.dist-info/METADATA": "Name: a\nLicense-File: LICENSE\n\n",
                            "a-1.dist-info/licenses/LICENSE": "\nThe MIT License (MIT)\n\nCopyright"})
-    assert bundle.wheel_license_file(found) == "The MIT License (MIT) (LICENSE 파일)"
-    assert bundle.wheel_license_file(make("b.whl", {"b-1.dist-info/LICENSE.txt": "Copyright (c) 2020 someone\n"})) is None
-    assert bundle.wheel_license_file(make("c.whl", {"c-1.dist-info/METADATA": "Name: c"})) is None
+    assert bundle.wheel_license(found) == "The MIT License (MIT) (LICENSE 파일)"
+    assert bundle.wheel_license(make("b.whl", {"b-1.dist-info/LICENSE.txt": "Copyright (c) 2020 someone\n"})) is None
+    assert bundle.wheel_license(make("c.whl", {"c-1.dist-info/METADATA": "Name: c"})) is None
 
 
 def test_report_needs_wheels_with_sha256():
@@ -493,6 +500,9 @@ import json, os, sys
 args = sys.argv[1:]
 with open(os.environ["FAKE_LOG"], "a") as log:
     log.write(json.dumps(args) + "\\n")
+if args[0] == "build":
+    with open(os.environ["FAKE_LOG"] + ".buildkit", "a") as log:
+        log.write(os.environ.get("DOCKER_BUILDKIT", "-") + "\\n")
 if args[:2] == ["image", "inspect"]:
     ref = args[-1]
     print(json.dumps({"Id": "sha256:" + "1" * 64, "RepoDigests": [] if ref.startswith("reco-act-") else [ref.split(":")[0] + "@sha256:" + "2" * 64],
@@ -514,7 +524,8 @@ def docker_log(tmp_path, monkeypatch):
     return log
 
 
-def test_collect_images_builds_from_the_snapshot_and_saves_all(tmp_path, docker_log):
+def test_collect_images_builds_from_the_snapshot_and_saves_all(tmp_path, docker_log, monkeypatch):
+    monkeypatch.delenv("DOCKER_BUILDKIT", raising=False)
     out = tmp_path / "out"
     items, built = bundle.collect_images(REPO, out, "9.9", "c" * 40, with_base=False)
 
@@ -527,6 +538,8 @@ def test_collect_images_builds_from_the_snapshot_and_saves_all(tmp_path, docker_
     assert api[api.index("--target") + 1] == "api" and f"org.opencontainers.image.revision={'c' * 40}" in api
     assert "--target" not in next(c for c in builds if "reco-act-web:9.9" in c)
     assert all(c[1:3] == ["--platform", "linux/amd64"] for c in calls if c[0] in ("build", "pull"))
+    # BuildKit을 강제하지 않는다(buildx가 없는 Docker에서도 기존 빌더로 빌드한다)
+    assert Path(str(docker_log) + ".buildkit").read_text().split() == ["-", "-", "-"]
     assert sorted(c[-1] for c in calls if c[0] == "pull") == ["postgres:16.10-bookworm", "redis:7.2.10-alpine", "vllm/vllm-openai:v0.31.0"]
 
     assert len(items) == 6

@@ -14,7 +14,7 @@
 사용(레포 루트). wheel 해석은 대상과 같은 CPython 3.10·Linux x86_64에서 해야 해서 server venv로 돌린다.
   server/.venv/bin/python scripts/airgap/bundle.py build --out /data/reco-act-bundle-2026.10.25
   python3 scripts/airgap/bundle.py verify /data/reco-act-bundle-2026.10.25
-표준 라이브러리만 쓴다(Python 3.8 이상). build에는 git, docker(BuildKit), npm과 인터넷이 필요하다.
+표준 라이브러리만 쓴다(Python 3.8 이상). build에는 git, docker, npm과 인터넷이 필요하다(BuildKit은 없어도 된다).
 pyannote(HF 게이트 모델)는 동의한 계정의 HF_TOKEN env나 --models-from(미리 받은 디렉터리)으로 준다. 토큰 값은 출력하지 않는다.
 받은 파일은 --cache-dir에 남겨 다시 만들 때 쓴다(sha256으로 확인).
 """
@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import datetime
+import email.parser
 import gzip
 import hashlib
 import http.client
@@ -320,8 +321,9 @@ def collect_images(source_dir: Path, bundle: Path, version: str, commit: str, wi
             cmd = [DOCKER, "build", "--platform", "linux/amd64", "-f", source_dir / context / DOCKERFILE, "-t", ref,
                    "--label", f"org.opencontainers.image.revision={commit}",
                    "--label", f"org.opencontainers.image.version={version}"]
-            run(cmd + (["--target", target] if target else []) + [source_dir / context],
-                env=dict(os.environ, DOCKER_BUILDKIT="1"))
+            # 추적 파일 사본에서 빌드하므로 BuildKit 전용 ignore 파일이 없어도 된다. buildx가 없는 Docker(Synology 등)는
+            # 기존 빌더로 빌드한다(worker를 빌드할 때 앞 스테이지까지 만든다). BuildKit을 강제하면 그런 곳에서 실패한다.
+            run(cmd + (["--target", target] if target else []) + [source_dir / context])
             built[name] = ref
         else:
             log(f"pull {ref}")
@@ -407,10 +409,19 @@ def license_of(meta: dict) -> str:
     return "; ".join(classifiers) or license_title(text) or "UNKNOWN"
 
 
-def wheel_license_file(path: Path):
-    """메타데이터에 라이선스가 없고 파일만 둔 wheel(PEP 639의 License-File): dist-info 라이선스 파일의 첫 줄."""
+def wheel_license(path: Path):
+    """pip 보고서에 라이선스가 없을 때 wheel에서 직접 읽는다.
+    METADATA의 License-Expression 등(pip 23은 이 필드를 보고서에 넣지 않는다), 없으면 dist-info 라이선스 파일의 첫 줄(PEP 639의 License-File만 둔 wheel)."""
     with zipfile.ZipFile(path) as wheel:
-        for name in sorted(wheel.namelist()):
+        names = sorted(wheel.namelist())
+        metadata = next((n for n in names if re.fullmatch(r"[^/]+\.dist-info/METADATA", n)), None)
+        if metadata:
+            headers = email.parser.HeaderParser().parsestr(wheel.read(metadata).decode("utf-8", "replace"))
+            found = license_of({"license_expression": headers.get("License-Expression"), "license": headers.get("License"),
+                                "classifier": headers.get_all("Classifier") or []})
+            if found != "UNKNOWN":
+                return found
+        for name in names:
             if re.search(r"\.dist-info/(licenses/.+|LICEN[CS]E[^/]*|COPYING[^/]*)$", name) and not name.endswith("/"):
                 title = license_title(wheel.read(name).decode("utf-8", "replace"))
                 if title:
@@ -522,7 +533,7 @@ def collect_wheels(python: str, source_dir: Path, bundle: Path, cache: Path, ver
                 cached.unlink()
                 raise BundleError(f"sha256 mismatch: {wheel.url}")
         link_or_copy(cached, bundle / "wheels" / filename)
-        license = wheel.license if wheel.license != "UNKNOWN" else wheel_license_file(cached) or "UNKNOWN"
+        license = wheel.license if wheel.license != "UNKNOWN" else wheel_license(cached) or "UNKNOWN"
         notes = f"{', '.join(sets[filename])} 이미지" + (". 인덱스에서 철회(yanked)된 버전" if wheel.yanked else "")
         items.append(Item("wheel", wheel.name, wheel.version, wheel.url, wheel.sha256, license, notes, f"wheels/{filename}"))
     return items
