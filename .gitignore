@@ -4,6 +4,14 @@ node_modules/
 *.env
 *.log
 *.wav
+# 음원은 git에 넣지 않는다(00-decisions 2.9·4장). 평가 음원은 평가 서버의 디스크에 둔다
+*.mp3
+*.flac
+*.m4a
+*.opus
+*.ogg
+*.webm
+*.aac
 *.pyc
 .pytest_cache/
 
@@ -35,3 +43,5 @@ server/prompt.txt
 records/
 # airgap Swagger UI 정적 파일(scripts/fetch_swagger_ui.py가 받는다)
 server/static/
+# 평가 결과(인식 결과 포함, eval/run_eval.py)
+eval/results/

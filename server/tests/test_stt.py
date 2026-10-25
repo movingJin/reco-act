@@ -17,6 +17,7 @@ from pydub import AudioSegment
 import clova_stt
 from models.meeting import TranscriptSegment
 from pipeline.audio import AudioDecodeError
+from pipeline import recognize
 from services import transcription_service
 from stt.base import SttHints
 from stt.clova import ClovaSttProvider
@@ -303,7 +304,7 @@ def test_airgap_llm_correction_runs_after_glossary(transcription_env, reload_con
         seen["texts"], seen["glossary"] = [s.text for s in segments], glossary
         return [s.model_copy(update={"text": s.text.replace("일정부터", "일정부터는")}) for s in segments]
 
-    monkeypatch.setattr(transcription_service, "correct_segments", fake_correct)
+    monkeypatch.setattr(recognize, "correct_segments", fake_correct)
     stages = []
 
     transcription_service.transcribe_meeting(MEETING_ID, stages.append)
@@ -323,7 +324,7 @@ def test_airgap_failure_removes_the_attempt_wav(transcription_env, reload_config
     def broken_diarizer():
         raise RuntimeError("diarizer exploded")
 
-    monkeypatch.setattr(transcription_service, "get_diarizer", broken_diarizer)
+    monkeypatch.setattr(recognize, "get_diarizer", broken_diarizer)
 
     with pytest.raises(RuntimeError, match="exploded"):
         transcription_service.transcribe_meeting(MEETING_ID)
@@ -357,7 +358,7 @@ def test_words_engine_without_diarizer_fails(transcription_env, reload_config):
 def test_airgap_undecodable_audio_fails_before_stt(transcription_env, reload_config, monkeypatch):
     reload_config(APP_PROFILE="airgap", STT_PROVIDER="mock", DIARIZER="mock")
     transcription_env.source.write_bytes(b"not audio at all")
-    monkeypatch.setattr(transcription_service, "get_stt_provider", lambda: pytest.fail("STT must not run"))
+    monkeypatch.setattr(recognize, "get_stt_provider", lambda: pytest.fail("STT must not run"))
     stages = []
 
     with pytest.raises(AudioDecodeError):

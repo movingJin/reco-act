@@ -16,6 +16,7 @@ import main
 from api.v1 import meeting_endpoints, summary_endpoints
 from database import Meeting as DBMeeting, ProcessingJob, User as DBUser
 from models.meeting import TranscriptSegment
+from pipeline import recognize
 from services import job_service, summary_service, transcription_service
 from services.meeting_service import load_meeting, set_transcription_status
 from services.summary_service import load_summary
@@ -67,7 +68,7 @@ def env(db, tmp_path, monkeypatch):
         session.add(DBMeeting(id=MEETING_ID, user_id=USER, title="회의", participants=["화자1", "화자2"]))
         session.add(DBMeeting(id="other-meeting", user_id="other@example.com", title="남의 회의", participants=[]))
         session.commit()
-    monkeypatch.setattr(transcription_service, "get_stt_provider", lambda: SegmentsProvider())
+    monkeypatch.setattr(recognize, "get_stt_provider", lambda: SegmentsProvider())
     monkeypatch.setattr(transcription_service, "RECORDS_DIR", tmp_path / "records")
     monkeypatch.setattr(meeting_endpoints, "UPLOADS_DIR", tmp_path / "uploads")
     monkeypatch.setattr(summary_service, "SummaryNode", FakeSummaryNode)

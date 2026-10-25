@@ -10,7 +10,6 @@
 워커가 변환 도중 죽어도 작업 기록과 source_audio_path가 DB에 남아 있어 다시 처리할 수 있다.
 """
 
-from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
@@ -29,13 +28,8 @@ from services.meeting_service import (
     get_pending_transcription,
 )
 from services.job_service import enqueue_job
-from diarization.factory import get_diarizer
 from pipeline.audio import normalize_audio
-from pipeline.correction import correct_segments
-from pipeline.glossary import apply_term_corrections
-from pipeline.merge import merge_words_and_turns
-from stt.base import SttHints
-from stt.factory import get_stt_provider
+from pipeline.recognize import recognize_audio
 from utils import config
 from utils.config import RECORDS_DIR
 
@@ -117,48 +111,17 @@ def transcribe_meeting(
 
 
 def _recognize(wav_path: Path, domain_id: Optional[int], stage: Callable[[str], None]):
-    """(세그먼트, 화자 이름, stt_results에 남길 값 또는 None)을 돌려준다."""
+    """(세그먼트, 화자 이름, stt_results에 남길 값 또는 None)을 돌려준다. 흐름은 pipeline/recognize.py에 있다."""
     # 도메인 키워드: STT 엔진 힌트(Clova boostings, faster-whisper hotwords)와 LLM 보정의 용어집
     domain_keywords = get_domain_keywords(domain_id) if domain_id else None
-
-    # STT (수 분 소요 가능). 엔진은 STT_PROVIDER로 고른다(public은 Clova).
-    stage("stt")
-    result = get_stt_provider().transcribe(
+    return recognize_audio(
         str(wav_path),
         language="ko-KR",
-        hints=SttHints(keywords=domain_keywords or []),
+        keywords=domain_keywords or [],
+        # 사전은 화자를 주지 않는 엔진(airgap)일 때만 읽는다(public은 지금처럼 조회하지 않는다)
+        corrections=lambda: get_term_corrections(domain_id) if domain_id else [],
+        stage=stage,
     )
-    if result.segments is not None:
-        # 화자까지 주는 엔진(Clova). 용어 보정과 원문 보존은 하지 않는다(public 현행).
-        return result.segments, result.speaker_names, None
-
-    # 단어만 주는 엔진은 화자분리 구간과 합쳐 세그먼트를 만든다(01-plan 3.3).
-    diarizer = get_diarizer()
-    if diarizer is None:
-        raise RuntimeError(f"STT provider {result.engine} returned no speaker segments and DIARIZER is not set")
-    stage("diarize")
-    turns = diarizer.diarize(str(wav_path))
-    stage("merge")
-    raw_segments, speaker_names = merge_words_and_turns(result.words, turns)
-
-    # 용어 보정(01-plan 3.4): 사전 치환, 켜져 있으면 LLM 보정
-    stage("glossary")
-    corrections = get_term_corrections(domain_id) if domain_id else []
-    segments = apply_term_corrections(raw_segments, corrections)
-    if config.TERM_CORRECTION_LLM:
-        stage("correct")
-        segments = correct_segments(segments, (domain_keywords or []) + [correct for _, correct in corrections])
-
-    record = {
-        "engine": result.engine,
-        "engine_version": result.engine_version or None,
-        "words": [asdict(word) for word in result.words],
-        "diarization": [asdict(turn) for turn in turns],
-        "raw_segments": [seg.model_dump() for seg in raw_segments],
-        "corrected_segments": [seg.model_dump() for seg in segments],
-        "engine_raw": result.raw or None,
-    }
-    return segments, speaker_names, record
 
 
 def enqueue_orphaned_transcriptions() -> list[str]:

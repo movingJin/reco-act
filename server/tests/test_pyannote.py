@@ -18,6 +18,7 @@ from diarization import pyannote as pa
 from diarization.base import Turn
 from diarization.factory import get_diarizer
 from diarization.pyannote import PyannoteDiarizer, PyannotePipelineNotFound
+from pipeline import recognize
 from services import transcription_service
 from services.job_service import RetryableError, is_retryable
 from utils import config
@@ -292,7 +293,7 @@ def test_airgap_pipeline_end_to_end(tmp_path, real_pyannote, no_network, monkeyp
             assert language == "ko-KR"
             return fw.FasterWhisperSttProvider().transcribe(wav_path, language="en-US", hints=hints)
 
-    monkeypatch.setattr(transcription_service, "get_stt_provider", EnglishAudio)
+    monkeypatch.setattr(recognize, "get_stt_provider", EnglishAudio)
 
     try:
         transcription_service.transcribe_meeting("m1", stages.append)

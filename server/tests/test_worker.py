@@ -15,6 +15,7 @@ from sqlalchemy import update
 
 from database import Meeting as DBMeeting, ProcessingJob, User as DBUser
 from models.meeting import TranscriptSegment
+from pipeline import recognize
 from services import job_service, transcription_service
 from services.job_service import RetryableError
 from services.meeting_service import create_meeting, load_meeting, set_transcription_status
@@ -581,7 +582,7 @@ def uploaded_meeting(db, tmp_path, monkeypatch):
 
 
 def test_worker_transcribes_and_saves(uploaded_meeting, monkeypatch):
-    monkeypatch.setattr(transcription_service, "get_stt_provider", lambda: SegmentsProvider())
+    monkeypatch.setattr(recognize, "get_stt_provider", lambda: SegmentsProvider())
     job_id = job_service.enqueue_job(uploaded_meeting.id, "transcribe")
     stages = []
     original = job_service.set_stage
@@ -696,7 +697,7 @@ def test_airgap_glossary_and_raw_transcript_are_stored(db, uploaded_meeting, mon
 
 def test_public_clova_path_stores_no_raw_transcript(db, uploaded_meeting, monkeypatch):
     from database import SttResultRecord
-    monkeypatch.setattr(transcription_service, "get_stt_provider", lambda: SegmentsProvider())
+    monkeypatch.setattr(recognize, "get_stt_provider", lambda: SegmentsProvider())
     job_service.enqueue_job(uploaded_meeting.id, "transcribe")
 
     Worker(worker_id="w", poll_interval=0.01).run_once()
