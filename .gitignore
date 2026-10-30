@@ -39,6 +39,7 @@ client/dist-airgap/
 client/vite.config.js
 client/vite.config.d.ts
 CLAUDE.md
+docs/
 server/prompt.txt
 records/
 # airgap Swagger UI 정적 파일(scripts/fetch_swagger_ui.py가 받는다)
